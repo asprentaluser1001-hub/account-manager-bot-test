@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment / secrets
+.env
+*.env
+!.env.example
+
+# SQLite database
+data.db
+data.db-journal
+data.db-wal
+data.db-shm
+
+# OS / editor
+.DS_Store
+*.log
+
+# Sandbox databases and temporary SQLite files
+*.db
+*.db-*
