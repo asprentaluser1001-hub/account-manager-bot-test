@@ -282,7 +282,7 @@ function AutoResetPicker({
 // ─── Dashboard ──────────────────────────────────────────────────────────────
 
 function Dashboard({ token, onLogout }: { token: string; onLogout: () => void }) {
-  const [showSettings, setShowSettings] = useState(false);
+  const [activeTab, setActiveTab] = useState<'accounts' | 'approvals' | 'finance' | 'history' | 'settings'>('accounts');
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -500,7 +500,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
             <span className="grid place-items-center w-9 h-9 rounded-xl bg-slate-900 text-white">
               <Icon path={ICONS.shield} className="w-5 h-5" />
             </span>
-            <h1 className="font-heading text-lg font-bold text-slate-900">Account Manager</h1>
+            <div><h1 className="font-heading text-lg font-bold text-slate-900">FlingRoulette</h1><p className="text-[10px] font-semibold tracking-[0.16em] uppercase text-slate-400">Admin</p></div>
           </div>
           <button
             onClick={onLogout}
@@ -510,17 +510,30 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
             <span>Log out</span>
           </button>
         </div>
+        <div className="max-w-3xl mx-auto px-4 sm:px-5 pb-3 overflow-x-auto">
+          <nav className="admin-tabs" aria-label="Dashboard sections">
+            {([['accounts','Accounts'],['approvals','Approvals'],['finance','Finance'],['history','History'],['settings','Settings']] as const).map(([id,label]) => (
+              <button key={id} onClick={() => setActiveTab(id)} className={activeTab === id ? 'active' : ''}>{label}</button>
+            ))}
+          </nav>
+        </div>
       </header>
 
       <main className="max-w-3xl mx-auto px-4 sm:px-5 py-6">
-        {showSettings ? (
-          <SettingsPanel token={token} onLogout={onLogout} onBack={() => setShowSettings(false)} />
+        {activeTab === 'settings' ? (
+          <>
+            <PaymentSettingsPanel token={token} />
+            <BotSettingsPanel token={token} />
+            <SettingsPanel token={token} onLogout={onLogout} onBack={() => setActiveTab('accounts')} />
+          </>
         ) : (
         <>
+        <div className={activeTab === 'accounts' ? '' : 'hidden'}>
         {/* Title + Add */}
         <div className="flex items-start justify-between gap-3 mb-5">
           <div className="min-w-0">
-            <h2 className="font-heading text-2xl font-bold text-slate-900">Accounts</h2>
+            <h2 className="font-heading text-2xl font-bold text-slate-900">Account management</h2>
+            <p className="mt-1 text-sm text-slate-500">{accounts.filter((account) => !account.sold).length} ready · {accounts.filter((account) => account.sold).length} in use</p>
           </div>
           <button
             onClick={() => setShowAdd(!showAdd)}
@@ -786,12 +799,14 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
           </div>
         )}
 
-        {/* Sales and bot content stay below account management. */}
-        <OrdersPanel token={token} />
-        <PaymentSettingsPanel token={token} />
-        <BotSettingsPanel token={token} />
+        </div>
+
+        {activeTab === 'approvals' && <OrdersPanel token={token} view="approvals" />}
+        {activeTab === 'finance' && <OrdersPanel token={token} view="finance" />}
 
         {/* ─── Reset History ─────────────────────────────────── */}
+        {activeTab === 'history' && <>
+        <OrdersPanel token={token} view="history" />
         <div className="mt-9">
           <div className="flex items-center gap-2 mb-1">
             <Icon path={ICONS.history} className="w-5 h-5 text-slate-500" />
@@ -859,7 +874,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
           {/* Admin Password Reset button */}
           <div className="mt-5">
             <button
-              onClick={() => setShowSettings(true)}
+              onClick={() => setActiveTab('settings')}
               className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 transition-colors shadow-sm"
             >
               <Icon path={ICONS.key} className="w-4 h-4" />
@@ -867,6 +882,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
             </button>
           </div>
         </div>
+        </>}
         </>
         )}
       </main>
