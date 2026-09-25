@@ -3,6 +3,7 @@ import {PRICES} from './testOrders';
 import {approveOrder,availableAccounts,claimPayment,createOrder,getOrder,markDelivered,markDeliveryFailed,rejectOrder,TestOrder} from './testOrders';
 const token=process.env.TELEGRAM_BOT_TOKEN||'';
 const adminId=process.env.TELEGRAM_ADMIN_ID||'';
+const checkoutUrl=process.env.PUBLIC_CHECKOUT_URL||'';
 let active=false;
 db.exec(`CREATE TABLE IF NOT EXISTS bot_visitors (chat_id TEXT PRIMARY KEY, welcomed_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS bot_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -145,8 +146,14 @@ async function handleCallback(c:any){
   } else if(data==='support'){
    await say(chatId,'The admin has not set a support username yet. Please try again later.',buttons([[homeButton]]));
   } else if(data.startsWith('hours:')){
-   const order=createOrder(chatId,String(c.from?.username||c.from?.first_name||'customer'),Number(data.slice(6)));
-   await say(chatId,`TEST ORDER ${order.id}\n${duration(order.hours)} · ₹${order.amount}\nNo payment is collected in this test. Tap below to simulate a payment claim.`,buttons([[{text:'Simulate payment claim',callback_data:`claim:${order.id}`}],[homeButton]]));
+   const hours=Number(data.slice(6));
+   if(checkoutUrl){
+    const link=new URL(checkoutUrl);link.searchParams.set('hours',String(hours));
+    await say(chatId,`Open the payment page for ${duration(hours)}. The QR download is available there.`,buttons([[{text:'Open payment page',url:link.toString()}],[homeButton]]));
+   }else{
+    const order=createOrder(chatId,String(c.from?.username||c.from?.first_name||'customer'),hours);
+    await say(chatId,`TEST ORDER ${order.id}\n${duration(order.hours)} · ₹${order.amount}\nNo payment is collected in this test. Tap below to simulate a payment claim.`,buttons([[{text:'Simulate payment claim',callback_data:`claim:${order.id}`}],[homeButton]]));
+   }
   } else if(data.startsWith('claim:')){
    const order=claimPayment(data.slice(6),chatId);await say(chatId,`Claim received for ${order.id}. The admin will review it.`,buttons([[homeButton]]));await sendAdminClaim(order);
   } else if(chatId===adminId && data.startsWith('stock:')){

@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import OrdersPanel from './OrdersPanel';
 import BotSettingsPanel from './BotSettingsPanel';
+import PaymentSettingsPanel from './PaymentSettingsPanel';
+import Checkout from './Checkout';
 
 interface Account {
   id: string;
@@ -28,6 +30,7 @@ const TOKEN_KEY = 'am_token';
 
 export default function App() {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
+  if (window.location.pathname.startsWith('/checkout')) return <Checkout />;
 
   if (!token) {
     return <Login onLogin={(t) => { localStorage.setItem(TOKEN_KEY, t); setToken(t); }} />;
@@ -785,6 +788,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
 
         {/* Sales and bot content stay below account management. */}
         <OrdersPanel token={token} />
+        <PaymentSettingsPanel token={token} />
         <BotSettingsPanel token={token} />
 
         {/* ─── Reset History ─────────────────────────────────── */}

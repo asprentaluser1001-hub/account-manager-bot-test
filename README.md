@@ -37,7 +37,9 @@ From the configured admin Telegram account:
 - Send a photo or video with caption `/proof` to save it. Use `/clearproofs` to remove the set. Upload only media intended for customers.
 - New visitors get the rate list and saved media. Returning customers can use **Rates & proofs** to view them again. Settings and visitor records survive restarts.
 
-Payments remain simulated. QR collection is not implemented. Telegram requires Stars for digital goods sold inside bots: https://core.telegram.org/bots/payments-stars . Do not treat this sandbox as a live checkout.
+The project also includes an independent customer checkout at `/checkout`. Set `PUBLIC_CHECKOUT_URL` to the public HTTPS checkout URL; when it is set, the bot sends a payment-page link after a customer chooses a plan. The bot does not send the QR image. On the website, the admin can set the brand name, payee name, UPI ID, support contact and upload a QR image. Customers can download that QR, open their UPI app with the exact amount, upload a payment screenshot and optionally enter the transaction reference. The order then appears in **Sales & bookings** for manual approval. Credentials are revealed only on the customer's private order page after an account is assigned.
+
+Payment screenshots are claims, not bank verification. This repository remains a sandbox until the seller is approved by a payment provider and a verified payment webhook replaces manual proof review. Telegram requires Stars for digital goods sold inside bots: https://core.telegram.org/bots/payments-stars . Keep the website purchase flow separate from Telegram.
 
 To update an existing test VPS, stop its running test process, run `git pull --ff-only` in the repository, rebuild the client and server with `npm run build` in each directory, then run `npm start` from `server`. Existing `.env` and database files are retained. Dashboard access from a phone still needs a private tunnel or secured deployment; localhost in phone Safari refers to the phone, not the VPS.
 
