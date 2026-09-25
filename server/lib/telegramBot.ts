@@ -20,11 +20,23 @@ async function showPlans(chatId:string){
  if(!availableAccounts().length){await showAvailability(chatId);return;}
  await say(chatId,'Choose your duration. Time starts when the admin approves. This is a test; no payment is collected.',buttons(Object.entries(PRICES).map(([h,p])=>[{text:`${duration(Number(h))} · ₹${p}`,callback_data:`hours:${h}`}]).concat([[supportButton() as any]])));
 }
-async function showProofs(chatId:string){
- await say(chatId,`Rate list (test amounts)\n${rateList()}\nTime starts at approval.`,menu());
+function availabilityText(){
+ const n=availableAccounts().length;
+ return n?`${n} sample ID${n===1?'':'s'} available`:'All IDs are busy — please try later.';
+}
+async function sendProofPhotos(chatId:string){
  const proofs=JSON.parse(setting('proofs')||'[]') as string[];
- for(const photo of proofs){await api('sendPhoto',{chat_id:chatId,photo,caption:'Screenshot supplied by the admin.',protect_content:true});}
- if(!proofs.length)await say(chatId,'Proof screenshots have not been added yet.');
+ if(proofs.length===1)await api('sendPhoto',{chat_id:chatId,photo:proofs[0],caption:'Screenshots supplied by the admin.',protect_content:true});
+ else if(proofs.length>1)await api('sendMediaGroup',{chat_id:chatId,media:proofs.map((photo,i)=>({type:'photo',media:photo,...(i===0?{caption:'Screenshots supplied by the admin.'}:{})})),protect_content:true});
+ return proofs.length;
+}
+async function showProofs(chatId:string){
+ const count=await sendProofPhotos(chatId);
+ await say(chatId,`Rates\n\n${rateList()}\n\n${count?'':'No proof screenshots added yet.\n'}Test only · No payment collected.`,menu());
+}
+async function showWelcome(chatId:string,firstVisit:boolean){
+ if(firstVisit)await sendProofPhotos(chatId);
+ await say(chatId,`Welcome!\n\n${availabilityText()}\n\n${rateList()}\n\nTime starts at approval.\nTest only · No payment collected.`,menu());
 }
 async function api(method:string,body:Record<string,unknown>):Promise<any>{
  if(!token)throw new Error('No test bot token configured');
@@ -71,8 +83,8 @@ async function handleMessage(m:any){
  if(text.startsWith('/support')){await say(chatId,'Contact the admin using the button below.',buttons([[supportButton()]]));return;}
  if(text.startsWith('/start')){
   const seen=db.prepare('SELECT chat_id FROM bot_visitors WHERE chat_id=?').get(chatId);
-  if(!seen){await showProofs(chatId);db.prepare('INSERT OR IGNORE INTO bot_visitors VALUES (?,?)').run(chatId,new Date().toISOString());}
-  await showAvailability(chatId);
+  await showWelcome(chatId,!seen);
+  if(!seen)db.prepare('INSERT OR IGNORE INTO bot_visitors VALUES (?,?)').run(chatId,new Date().toISOString());
  }
 
 }
