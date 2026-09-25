@@ -15,6 +15,7 @@ import { startTestBot } from './lib/telegramBot';
 import { db } from './db';
 import {botSettingsRouter} from './routes/botSettings';
 import {checkoutRouter,paymentSettingsRouter} from './routes/checkout';
+import {pushRouter} from './routes/push';
 
 const sandboxMode = process.env.SANDBOX_MODE === 'true';
 if (!process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD.length < 12 || !process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) throw new Error('Configure strong ADMIN_PASSWORD and JWT_SECRET before starting.');
@@ -29,6 +30,7 @@ app.use(cors());
 app.use('/api/bot-settings', botSettingsRouter);
 app.use('/api/checkout', checkoutRouter);
 app.use('/api/payment-settings', paymentSettingsRouter);
+app.use('/api/push', pushRouter);
 app.use(express.json({limit:'256kb'}));
 
 // API routes
