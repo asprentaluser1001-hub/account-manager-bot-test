@@ -16,9 +16,10 @@ import { db } from './db';
 import {botSettingsRouter} from './routes/botSettings';
 import {checkoutRouter,paymentSettingsRouter} from './routes/checkout';
 
-if (process.env.SANDBOX_MODE !== 'true') throw new Error('This duplicate is sandbox only. Set SANDBOX_MODE=true with SAMPLE accounts.');
+const sandboxMode = process.env.SANDBOX_MODE === 'true';
 if (!process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD.length < 12 || !process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) throw new Error('Configure strong ADMIN_PASSWORD and JWT_SECRET before starting.');
-if ((db.prepare('SELECT COUNT(*) AS n FROM accounts').get() as {n:number}).n === 0) {
+// Demo accounts are created only in the explicit sample-only mode.
+if (sandboxMode && (db.prepare('SELECT COUNT(*) AS n FROM accounts').get() as {n:number}).n === 0) {
  for(let n=1;n<=3;n++) db.prepare('INSERT INTO accounts (id,name,email,password,sold,sold_until,last_reset_at,created_at) VALUES (?,?,?,?,0,NULL,NULL,?)').run(`sample-${n}`,`Sample ID ${n}`,`sample${n}@example.invalid`,`TEST-ONLY-${n}-${Date.now()}`,new Date().toISOString());
 }
 const app = express();
