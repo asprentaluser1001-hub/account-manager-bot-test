@@ -7,12 +7,17 @@ type OrderStatus={id:string;username:string;hours:number;amount:number;status:st
 
 const ORDER_KEY='flingroulette_checkout_order';
 const duration=(hours:number)=>hours===168?'1 week':hours===720?'1 month':`${hours} hour${hours===1?'':'s'}`;
+function linkedOrder():SavedOrder|null{
+ const query=new URLSearchParams(window.location.search),orderId=query.get('order')||'',accessToken=query.get('token')||'',amount=Number(query.get('amount')),hours=Number(query.get('hours'));
+ return orderId&&accessToken&&Number.isFinite(amount)&&amount>0&&[1,2,3,168,720].includes(hours)?{orderId,accessToken,amount,hours}:null;
+}
 
 export default function Checkout(){
  const [config,setConfig]=useState<Config|null>(null),[selected,setSelected]=useState<number>(()=>{const value=Number(new URLSearchParams(window.location.search).get('hours'));return [1,2,3,168,720].includes(value)?value:1}),[name,setName]=useState(''),[contact,setContact]=useState('');
- const [saved,setSaved]=useState<SavedOrder|null>(()=>{try{return JSON.parse(sessionStorage.getItem(ORDER_KEY)||'null')}catch{return null}});
+ const [saved,setSaved]=useState<SavedOrder|null>(()=>{const linked=linkedOrder();if(linked)return linked;try{return JSON.parse(sessionStorage.getItem(ORDER_KEY)||'null')}catch{return null}});
  const [order,setOrder]=useState<OrderStatus|null>(null),[reference,setReference]=useState(''),[proof,setProof]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[copied,setCopied]=useState('');
  useEffect(()=>{fetch('/api/checkout/config').then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.error);setConfig(d);if(d.plans?.length&&!d.plans.some((p:Plan)=>p.hours===selected))setSelected(d.plans[0].hours)}).catch(()=>setError('Checkout is temporarily unavailable. Please try again.'))},[]);
+ useEffect(()=>{const linked=linkedOrder();if(linked){sessionStorage.setItem(ORDER_KEY,JSON.stringify(linked));window.history.replaceState({},'',window.location.pathname)}},[]);
  useEffect(()=>{if(!saved)return;let active=true;const load=async()=>{try{const r=await fetch(`/api/checkout/orders/${saved.orderId}?token=${encodeURIComponent(saved.accessToken)}`);const d=await r.json();if(!r.ok)throw new Error(d.error);if(active)setOrder(d)}catch(e){if(active)setError(e instanceof Error?e.message:'Could not check order')}};load();const timer=setInterval(load,8000);return()=>{active=false;clearInterval(timer)}},[saved]);
  const plan=useMemo(()=>config?.plans.find(p=>p.hours===selected),[config,selected]);
  const upiQuery=saved&&config?.upiId?`pa=${encodeURIComponent(config.upiId)}&pn=${encodeURIComponent(config.payeeName||config.brand)}&am=${saved.amount.toFixed(2)}&cu=INR&tn=${encodeURIComponent(saved.orderId)}`:'';
