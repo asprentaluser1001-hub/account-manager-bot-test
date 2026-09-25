@@ -407,14 +407,15 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
   }
 
   async function unsell(id: string) {
-    setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, sold: false, soldUntil: null } : a)));
     try {
-      await fetch(`/api/accounts/${id}/sold`, {
-        method: 'PATCH', headers: authHeaders(),
-        body: JSON.stringify({ sold: false }),
-      });
+      const response = await fetch(`/api/accounts/${id}/release`, { method: 'POST', headers: authHeaders() });
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error || 'Could not release account');
+      setResetResult((current) => ({ ...current, [id]: { ok: true, msg: 'Released and password reset.' } }));
       await load();
-    } catch { /* ignore, will re-sync on next load */ }
+    } catch (err) {
+      setResetResult((current) => ({ ...current, [id]: { ok: false, msg: err instanceof Error ? err.message : 'Could not release account' } }));
+    }
   }
 
   async function deleteAccount(id: string) {
@@ -741,7 +742,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
                             onClick={() => unsell(acc.id)}
                             className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-red-600 transition-colors"
                           >
-                            <Icon path={ICONS.x} className="w-3.5 h-3.5" /> Unsell now
+                            <Icon path={ICONS.x} className="w-3.5 h-3.5" /> Release & reset now
                           </button>
                         ) : (
                           <button
