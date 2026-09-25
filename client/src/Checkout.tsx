@@ -15,7 +15,13 @@ export default function Checkout(){
  useEffect(()=>{fetch('/api/checkout/config').then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.error);setConfig(d);if(d.plans?.length&&!d.plans.some((p:Plan)=>p.hours===selected))setSelected(d.plans[0].hours)}).catch(()=>setError('Checkout is temporarily unavailable. Please try again.'))},[]);
  useEffect(()=>{if(!saved)return;let active=true;const load=async()=>{try{const r=await fetch(`/api/checkout/orders/${saved.orderId}?token=${encodeURIComponent(saved.accessToken)}`);const d=await r.json();if(!r.ok)throw new Error(d.error);if(active)setOrder(d)}catch(e){if(active)setError(e instanceof Error?e.message:'Could not check order')}};load();const timer=setInterval(load,8000);return()=>{active=false;clearInterval(timer)}},[saved]);
  const plan=useMemo(()=>config?.plans.find(p=>p.hours===selected),[config,selected]);
- const upiLink=saved&&config?.upiId?`upi://pay?pa=${encodeURIComponent(config.upiId)}&pn=${encodeURIComponent(config.payeeName||config.brand)}&am=${saved.amount.toFixed(2)}&cu=INR&tn=${encodeURIComponent(saved.orderId)}`:'';
+ const upiQuery=saved&&config?.upiId?`pa=${encodeURIComponent(config.upiId)}&pn=${encodeURIComponent(config.payeeName||config.brand)}&am=${saved.amount.toFixed(2)}&cu=INR&tn=${encodeURIComponent(saved.orderId)}`:'';
+ const paymentApps=upiQuery?[
+  {name:'Google Pay',hint:'GPay',href:`tez://upi/pay?${upiQuery}`},
+  {name:'PhonePe',hint:'PhonePe',href:`phonepe://pay?${upiQuery}`},
+  {name:'Paytm',hint:'Paytm',href:`paytmmp://pay?${upiQuery}`},
+  {name:'Any UPI app',hint:'UPI',href:`upi://pay?${upiQuery}`},
+ ]:[];
  async function createOrder(e:React.FormEvent){e.preventDefault();setBusy(true);setError('');try{const r=await fetch('/api/checkout/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,contact,hours:selected})});const d=await r.json();if(!r.ok)throw new Error(d.error);const next={orderId:d.orderId,accessToken:d.accessToken,amount:d.amount,hours:selected};sessionStorage.setItem(ORDER_KEY,JSON.stringify(next));setSaved(next)}catch(e){setError(e instanceof Error?e.message:'Could not create order')}finally{setBusy(false)}}
  async function chooseProof(file:File){
   if(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>3*1024*1024){setError('Upload a PNG, JPEG or WebP screenshot under 3 MB.');return;}
@@ -49,7 +55,7 @@ export default function Checkout(){
     <div className="amount-due"><span>Pay exactly</span><strong>₹{saved.amount}</strong></div>
     {config.qrDataUrl&&<><img className="payment-qr" src={config.qrDataUrl} alt={`UPI QR for ${config.payeeName||config.brand}`}/><div className="qr-actions"><span>Scan with another phone</span><a href={config.qrDataUrl} download="flingroulette-payment-qr.png">Download QR</a></div></>} 
     <div className="upi-details"><span>UPI ID</span><strong>{config.upiId}</strong><button onClick={()=>copy(config.upiId,'upi')}>{copied==='upi'?'Copied':'Copy'}</button></div>
-    {upiLink&&<a className="checkout-primary block" href={upiLink}>Open UPI app · ₹{saved.amount}</a>}
+    {!!paymentApps.length&&<div className="payment-apps"><p>Pay using</p><div className="payment-app-grid">{paymentApps.map(app=><a key={app.name} href={app.href}><span>{app.hint}</span><strong>{app.name}</strong></a>)}</div><small>Choose an app installed on this phone. If it does not open, download the QR and pay from your UPI app.</small></div>}
     <p className="checkout-note">Confirm the payee name is <strong>{config.payeeName||config.brand}</strong>. Enter the exact amount shown above.</p>
     <form onSubmit={submitProof} className="proof-form">
      <label>Payment screenshot</label><label className="upload-box">{proof?<><img src={proof} alt="Selected payment screenshot"/><span>Change screenshot</span></>:<><b>Upload payment screenshot</b><span>PNG, JPEG or WebP · maximum 3 MB</span></>}<input type="file" accept="image/png,image/jpeg,image/webp" onChange={e=>{const file=e.target.files?.[0];if(file)chooseProof(file)}}/></label>
