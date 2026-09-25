@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import OrdersPanel from './OrdersPanel';
+import BotSettingsPanel from './BotSettingsPanel';
 
 interface Account {
   id: string;
@@ -514,6 +515,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
         ) : (
         <>
         <OrdersPanel token={token} />
+        <BotSettingsPanel token={token} />
         {/* Title + Add */}
         <div className="flex items-start justify-between gap-3 mb-5">
           <div className="min-w-0">

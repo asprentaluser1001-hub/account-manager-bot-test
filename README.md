@@ -40,3 +40,9 @@ From the configured admin Telegram account:
 Payments remain simulated. QR collection is not implemented. Telegram requires Stars for digital goods sold inside bots: https://core.telegram.org/bots/payments-stars . Do not treat this sandbox as a live checkout.
 
 To update an existing test VPS, stop its running test process, run `git pull --ff-only` in the repository, rebuild the client and server with `npm run build` in each directory, then run `npm start` from `server`. Existing `.env` and database files are retained. Dashboard access from a phone still needs a private tunnel or secured deployment; localhost in phone Safari refers to the phone, not the VPS.
+
+## Admin panel: screenshots and support
+
+The dashboard now includes a **Bot settings** section. Upload PNG/JPEG/WebP screenshots (maximum 3 MB each, five total), remove saved screenshots, and set the support username there. Uploads are sent to the configured admin Telegram chat for review and their Telegram file IDs are stored in SQLite. The admin must have started the bot. Telegram must be reachable for uploads. The panel lists saved screenshots by number; view the actual images in the admin chat.
+
+The booking overview includes total orders, distinct customers, approved test sales and test revenue. Amounts represent approved simulated orders, not verified earnings. Customer availability checks update the existing menu and expose only available/unavailable; detailed stock remains admin-only.
