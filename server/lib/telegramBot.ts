@@ -4,6 +4,7 @@ import {approveOrder,availableAccounts,claimPayment,createOrder,getOrder,markDel
 const token=process.env.TELEGRAM_BOT_TOKEN||'';
 const adminId=process.env.TELEGRAM_ADMIN_ID||'';
 const checkoutUrl=process.env.PUBLIC_CHECKOUT_URL||'';
+const sandboxMode=process.env.SANDBOX_MODE==='true';
 let active=false;
 db.exec(`CREATE TABLE IF NOT EXISTS bot_visitors (chat_id TEXT PRIMARY KEY, welcomed_at TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS bot_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -41,7 +42,7 @@ async function showAvailability(chatId:string,messageId?:number){
 }
 async function showPlans(chatId:string){
  if(!availableAccounts().length){await showAvailability(chatId);return;}
- await say(chatId,'Choose your duration. Time starts when the admin approves. This is a test; no payment is collected.',buttons(Object.entries(PRICES).map(([h,p])=>[{text:`${duration(Number(h))} · ₹${p}`,callback_data:`hours:${h}`}]).concat([[supportButton() as any],[homeButton]])));
+ await say(chatId,`Choose your duration. Time starts when the admin approves. ${sandboxMode?'This is a test; no payment is collected.':'Payment is verified manually before access is sent.'}`,buttons(Object.entries(PRICES).map(([h,p])=>[{text:`${duration(Number(h))} · ₹${p}`,callback_data:`hours:${h}`}]).concat([[supportButton() as any],[homeButton]])));
 }
 function availabilityText(){
  const n=availableAccounts().length;
@@ -59,9 +60,9 @@ async function sendProofPhotos(chatId:string){
 }
 async function showProofs(chatId:string){
  const count=await sendProofPhotos(chatId);
- await say(chatId,`Rates\n\n${rateList()}\n\n${count?'':'No proof screenshots added yet.\n'}Test only · No payment collected.`,buttons([[homeButton]]));
+ await say(chatId,`Rates\n\n${rateList()}\n\n${count?'':'No proof screenshots added yet.\n'}${sandboxMode?'Test only · No payment collected.':'Payment is verified by the admin before access is sent.'}`,buttons([[homeButton]]));
 }
-function welcomeText(){return `Welcome!\n\n${availabilityText()}\n\n${rateList()}\n\nTime starts at approval.\nTest only · No payment collected.`;}
+function welcomeText(){return `Welcome!\n\n${availabilityText()}\n\n${rateList()}\n\nTime starts at approval.\n${sandboxMode?'Test only · No payment collected.':'Payment is verified by the admin before access is sent.'}`;}
 async function showWelcome(chatId:string,firstVisit:boolean){
  if(firstVisit)await sendProofPhotos(chatId);
  await say(chatId,welcomeText(),menu());
@@ -172,7 +173,6 @@ async function handleCallback(c:any){
 export function startTestBot(){
  if(!token){console.log('[Bot] Set TELEGRAM_BOT_TOKEN to enable the test bot.');return;}
  if(!adminId)console.log('[Bot] Send /id to the bot, then set TELEGRAM_ADMIN_ID and restart before trying approvals.');
- if(process.env.SANDBOX_MODE!=='true')throw new Error('This bot runs only in SANDBOX_MODE.');
  api('setMyCommands',{commands:[{command:'start',description:'Open booking menu'},{command:'home',description:'Return to home'},{command:'support',description:'Contact admin'}]}).catch(e=>console.error('[Bot] Could not set commands',e));
  api('setChatMenuButton',{menu_button:{type:'commands'}}).catch(e=>console.error('[Bot] Could not set menu button',e));
  active=true;let offset=0;
