@@ -2,6 +2,7 @@ import {Router,json,Request} from 'express';
 import {adminAuth} from '../auth';
 import {availableAccounts,createWebOrder,PRICES,publicWebOrder,submitWebProof} from '../lib/testOrders';
 import {db} from '../db';
+import {sendAdminClaim} from '../lib/telegramBot';
 
 db.exec(`CREATE TABLE IF NOT EXISTS payment_settings (key TEXT PRIMARY KEY,value TEXT NOT NULL);`);
 const getSetting=(key:string)=>(db.prepare('SELECT value FROM payment_settings WHERE key=?').get(key) as {value:string}|undefined)?.value||'';
@@ -22,8 +23,8 @@ checkoutRouter.post('/orders',json({limit:'32kb'}),(req,res)=>{
  try{if(limited(req))return res.status(429).json({error:'Too many attempts. Please wait and try again.'});const result=createWebOrder(String(req.body.name||''),String(req.body.contact||''),Number(req.body.hours));return res.status(201).json({orderId:result.order.id,accessToken:result.accessToken,amount:result.order.amount,status:result.order.status});}
  catch(error){return res.status(400).json({error:error instanceof Error?error.message:'Could not create order'});}
 });
-checkoutRouter.post('/orders/:id/proof',json({limit:'5mb'}),(req,res)=>{
- try{if(limited(req))return res.status(429).json({error:'Too many attempts. Please wait and try again.'});const order=submitWebProof(req.params.id,String(req.body.accessToken||''),String(req.body.paymentReference||''),String(req.body.proofDataUrl||''));return res.json({status:order.status});}
+checkoutRouter.post('/orders/:id/proof',json({limit:'5mb'}),async(req,res)=>{
+ try{if(limited(req))return res.status(429).json({error:'Too many attempts. Please wait and try again.'});const order=submitWebProof(req.params.id,String(req.body.accessToken||''),String(req.body.paymentReference||''),String(req.body.proofDataUrl||''));const adminAlerted=await sendAdminClaim(order);return res.json({status:order.status,adminAlerted});}
  catch(error){return res.status(400).json({error:error instanceof Error?error.message:'Could not submit payment proof'});}
 });
 checkoutRouter.get('/orders/:id',(req,res)=>{
