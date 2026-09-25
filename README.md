@@ -34,8 +34,8 @@ The bot now checks availability before showing plans and creating an order; appr
 
 From the configured admin Telegram account:
 - Send `/supportuser your_username` to set the direct support button (your public username, not the bot username).
-- Send a photo with caption `/proof` to save a proof screenshot. Maximum five photos. Use `/clearproofs` to remove the set. Upload only screenshots intended for customers.
-- New visitors get the rate list and saved photos. Returning customers can use **Rates & proofs** to view them again. Settings and visitor records survive restarts.
+- Send a photo or video with caption `/proof` to save it. Use `/clearproofs` to remove the set. Upload only media intended for customers.
+- New visitors get the rate list and saved media. Returning customers can use **Rates & proofs** to view them again. Settings and visitor records survive restarts.
 
 Payments remain simulated. QR collection is not implemented. Telegram requires Stars for digital goods sold inside bots: https://core.telegram.org/bots/payments-stars . Do not treat this sandbox as a live checkout.
 
@@ -43,6 +43,10 @@ To update an existing test VPS, stop its running test process, run `git pull --f
 
 ## Admin panel: screenshots and support
 
-The dashboard now includes a **Bot settings** section. Upload PNG/JPEG/WebP screenshots (maximum 3 MB each, five total), remove saved screenshots, and set the support username there. Uploads are sent to the configured admin Telegram chat for review and their Telegram file IDs are stored in SQLite. The admin must have started the bot. Telegram must be reachable for uploads. The panel lists saved screenshots by number; view the actual images in the admin chat.
+The dashboard now includes a **Bot settings** section. Upload any number of PNG/JPEG/WebP screenshots (maximum 3 MB each) and MP4 videos (maximum 15 MB each), remove individual proofs, and set the support username there. Uploads are sent to the configured admin Telegram chat for review and their Telegram file IDs are stored in SQLite. The admin must have started the bot. Telegram must be reachable for uploads. The panel lists saved screenshots by number; view the actual images in the admin chat.
 
 The booking overview includes total orders, distinct customers, approved test sales and test revenue. Amounts represent approved simulated orders, not verified earnings. Customer availability checks update the existing menu and expose only available/unavailable; detailed stock remains admin-only.
+
+## Bot navigation
+
+Telegram displays its own **Start** button before a customer first talks to a bot; bots cannot message users simply when they reopen a conversation. After starting, customers can use the Telegram command menu (`/home`), or the **Home** button on booking screens. Saved proof media is sent in groups of up to ten items per Telegram album. The upgrade migrates existing saved screenshots automatically; keep the `server/test.db` database when updating the VPS.
