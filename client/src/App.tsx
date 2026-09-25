@@ -514,8 +514,6 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
           <SettingsPanel token={token} onLogout={onLogout} onBack={() => setShowSettings(false)} />
         ) : (
         <>
-        <OrdersPanel token={token} />
-        <BotSettingsPanel token={token} />
         {/* Title + Add */}
         <div className="flex items-start justify-between gap-3 mb-5">
           <div className="min-w-0">
@@ -784,6 +782,10 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
             })}
           </div>
         )}
+
+        {/* Sales and bot content stay below account management. */}
+        <OrdersPanel token={token} />
+        <BotSettingsPanel token={token} />
 
         {/* ─── Reset History ─────────────────────────────────── */}
         <div className="mt-9">

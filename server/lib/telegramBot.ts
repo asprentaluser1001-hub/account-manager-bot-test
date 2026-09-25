@@ -135,7 +135,8 @@ async function handleMessage(m:any){
 async function handleCallback(c:any){
  if(c.message?.chat?.type!=='private'||String(c.message.chat.id)!==String(c.from?.id))return;
  const chatId=String(c.message?.chat?.id||c.from?.id), data=String(c.data||'');
- await api('answerCallbackQuery',{callback_query_id:c.id}).catch(()=>{});
+ const availabilityMessage=data==='availability'?availabilityText():'';
+ await api('answerCallbackQuery',{callback_query_id:c.id,...(availabilityMessage?{text:availabilityMessage,show_alert:true}:{})}).catch(()=>{});
  try {
   if(data==='home'){await showWelcome(chatId,false);
   } else if(data==='book'){await showPlans(chatId);
