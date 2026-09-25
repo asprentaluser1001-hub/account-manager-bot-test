@@ -28,8 +28,8 @@ export function recentOrders():TestOrder[]{return db.prepare('SELECT * FROM test
 export function createOrder(chatId:string,username:string,hours:number):TestOrder {
  if (!PRICES[hours] || !/^\d{1,20}$/.test(chatId) || username.length > 64) throw new Error('Invalid order');
  if(!availableAccounts().length) throw new Error('No IDs are available right now. Please try again later or contact support.');
- const id='TEST-'+randomUUID().slice(0,8).toUpperCase(), now=new Date().toISOString();
- db.prepare("INSERT INTO test_orders (id,chat_id,username,hours,amount,status,created_at,source) VALUES (?,?,?,?,?,?,?,'telegram')").run(id,chatId,username,hours,PRICES[hours],'awaiting_payment_claim',now);
+ const id='BOT-'+randomUUID().slice(0,8).toUpperCase(),accessToken=randomBytes(24).toString('base64url'),now=new Date().toISOString();
+ db.prepare("INSERT INTO test_orders (id,chat_id,username,hours,amount,status,created_at,source,access_token) VALUES (?,?,?,?,?,?,?,'telegram',?)").run(id,chatId,username,hours,PRICES[hours],'awaiting_payment_claim',now,accessToken);
  return getOrder(id)!;
 }
 export function createWebOrder(name:string,contact:string,hours:number):{order:TestOrder;accessToken:string}{
@@ -49,12 +49,12 @@ export function submitWebProof(id:string,accessToken:string,paymentReference:str
  if(!valid)throw new Error('The uploaded file does not match its format');
  paymentReference=paymentReference.trim();
  if(paymentReference.length>80)throw new Error('Payment reference is too long');
- const result=db.prepare("UPDATE test_orders SET status='payment_claimed',claimed_at=?,payment_reference=?,proof_data_url=? WHERE id=? AND access_token=? AND source='web' AND status='awaiting_payment_claim'").run(new Date().toISOString(),paymentReference||null,proofDataUrl,id,accessToken);
+ const result=db.prepare("UPDATE test_orders SET status='payment_claimed',claimed_at=?,payment_reference=?,proof_data_url=? WHERE id=? AND access_token=? AND source IN ('web','telegram') AND status='awaiting_payment_claim'").run(new Date().toISOString(),paymentReference||null,proofDataUrl,id,accessToken);
  if(!result.changes)throw new Error('Order not found or payment proof already submitted');
  return getOrder(id)!;
 }
 export function publicWebOrder(id:string,accessToken:string){
- const order=db.prepare("SELECT id,username,hours,amount,status,created_at,claimed_at,approved_at,expires_at,error FROM test_orders WHERE id=? AND access_token=? AND source='web'").get(id,accessToken) as Partial<TestOrder>|undefined;
+ const order=db.prepare("SELECT id,username,hours,amount,status,created_at,claimed_at,approved_at,expires_at,error FROM test_orders WHERE id=? AND access_token=? AND source IN ('web','telegram')").get(id,accessToken) as Partial<TestOrder>|undefined;
  if(!order)throw new Error('Order not found');
  let credentials:null|{email:string;password:string}=null;
  if(['approved','delivered','delivery_failed'].includes(String(order.status))){
