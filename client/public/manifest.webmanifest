@@ -1,0 +1,14 @@
+{
+  "name": "FlingRoulette Admin",
+  "short_name": "FlingRoulette",
+  "description": "FlingRoulette account and approval manager",
+  "id": "/",
+  "start_url": "/?tab=approvals",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#0f172a",
+  "icons": [
+    {"src":"/icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}
+  ]
+}
