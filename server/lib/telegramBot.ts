@@ -99,7 +99,8 @@ async function say(chatId:string,text:string,keyboard?:ReturnType<typeof buttons
 }
 export async function sendAdminClaim(order:TestOrder){
  if(!token||!adminId)return false;
- try {await say(adminId,`TEST payment claim (no money verified)\nOrder ${order.id} · @${order.username.replace(/^@/,'')} · ${duration(order.hours)} · ₹${order.amount}\nChoose an account only after checking payment.`,buttons([[{text:'Show available accounts',callback_data:`stock:${order.id}`}],[{text:'Reject claim',callback_data:`reject:${order.id}`}],[homeButton]]));return true;}
+ const customer=order.source==='web'?order.username:`@${order.username.replace(/^@/,'')}`;
+ try {await say(adminId,`${sandboxMode?'TEST ':''}Payment claim\nOrder ${order.id} · ${customer} · ${duration(order.hours)} · ₹${order.amount}\nCheck the proof in the Approvals tab before delivering access.`,buttons([[{text:'Show available accounts',callback_data:`stock:${order.id}`}],[{text:'Reject claim',callback_data:`reject:${order.id}`}],[homeButton]]));return true;}
  catch(e){console.error('[Bot] Admin alert failed',e);return false;}
 }
 export async function sendCustomerDelivery(order:TestOrder,email:string,password:string){
@@ -159,13 +160,13 @@ async function handleCallback(c:any){
    const order=claimPayment(data.slice(6),chatId);await say(chatId,`Claim received for ${order.id}. The admin will review it.`,buttons([[homeButton]]));await sendAdminClaim(order);
   } else if(chatId===adminId && data.startsWith('stock:')){
    const id=data.slice(6),order=getOrder(id);if(!order||order.status!=='payment_claimed')throw new Error('Order is no longer awaiting approval');
-   const options=availableAccounts();await say(adminId,options.length?`Select a sample account for ${id}:`:'No sample accounts available.',buttons(options.map(a=>[{text:a.name,callback_data:`approve:${id}:${a.id}`}])));
+   const options=availableAccounts();await say(adminId,options.length?`Select an account for ${id}:`:'No accounts available.',buttons(options.map(a=>[{text:a.name,callback_data:`approve:${id}:${a.id}`}])));
   } else if(chatId===adminId && data.startsWith('approve:')){
    const [,id,accountId]=data.split(':');const details=approveOrder(id,accountId);const delivered=await sendCustomerDelivery(details.order,details.email,details.password);
    if(delivered)markDelivered(id);else markDeliveryFailed(id,'Telegram delivery failed; account remains reserved.');
    await say(adminId,delivered?`${id} approved and delivered. Reset scheduled for ${details.order.expires_at}.`:`${id} approved but delivery failed. Account remains reserved; check the dashboard.`);
   } else if(chatId===adminId && data.startsWith('reject:')){
-   rejectOrder(data.slice(7));await say(adminId,'Test payment claim rejected.');
+   rejectOrder(data.slice(7));await say(adminId,'Payment claim rejected.');
   }
  }catch(e){await say(chatId,`Could not complete: ${e instanceof Error?e.message:'unknown error'}`);}
 
