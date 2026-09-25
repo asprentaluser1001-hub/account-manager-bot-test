@@ -4,6 +4,7 @@ import { db, AccountRow, ResetHistoryRow, AutoResetRow } from '../db';
 import { adminAuth } from '../auth';
 import { resetAccountPassword } from '../lib/passwordReset';
 import { logResetHistory } from '../lib/history';
+import { markReset } from '../lib/testOrders';
 
 /**
  * Account routes. All protected by adminAuth.
@@ -11,6 +12,7 @@ import { logResetHistory } from '../lib/history';
  *   POST   /api/accounts               -> add an account { name, email, password }
  *   PATCH  /api/accounts/:id           -> edit { name, email, password }
  *   PATCH  /api/accounts/:id/sold      -> set sold { sold: boolean }
+ *   POST   /api/accounts/:id/release   -> reset password, then release now
  *   DELETE /api/accounts/:id           -> delete
  *   POST   /api/accounts/:id/reset-password  -> reset now (headless chromium)
  *   POST   /api/accounts/:id/auto-reset      -> schedule auto reset { runAt }
@@ -126,6 +128,32 @@ accountsRouter.patch('/:id/sold', (req: Request, res: Response) => {
 
   db.prepare('UPDATE accounts SET sold = 0, sold_until = NULL WHERE id = ?').run(id);
   return res.json({ ok: true, sold: false, soldUntil: null });
+});
+
+// End an active booking early. The account stays reserved until its password
+// has reset successfully, so it can never be re-used with old credentials.
+accountsRouter.post('/:id/release', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const account = db.prepare('SELECT name FROM accounts WHERE id = ?').get(id) as { name: string } | undefined;
+  if (!account) return res.status(404).json({ error: 'Account not found' });
+
+  const result = await resetAccountPassword(id);
+  logResetHistory({
+    accountId: id,
+    accountName: account.name,
+    success: result.success,
+    newPassword: result.newPassword,
+    error: result.error,
+    source: 'manual',
+  });
+
+  if (!result.success) return res.status(500).json({ error: result.error || 'Password reset failed. Account remains reserved.' });
+
+  // A completed manual release replaces the pending expiry reset.
+  db.prepare('DELETE FROM auto_reset_schedule WHERE account_id = ?').run(id);
+  markReset(id, true);
+  db.prepare('UPDATE accounts SET sold = 0, sold_until = NULL WHERE id = ?').run(id);
+  return res.json({ ok: true, sold: false, newPassword: result.newPassword });
 });
 
 // Delete an account (also clears any pending schedule)
