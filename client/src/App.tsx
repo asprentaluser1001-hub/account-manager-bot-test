@@ -27,6 +27,11 @@ interface HistoryEntry {
 }
 
 const TOKEN_KEY = 'am_token';
+type PushState = 'checking' | 'off' | 'on' | 'unsupported';
+function vapidBytes(value:string):Uint8Array<ArrayBuffer>{
+  const padded=value+'='.repeat((4-value.length%4)%4),raw=atob(padded.replace(/-/g,'+').replace(/_/g,'/'));
+  const bytes=new Uint8Array(new ArrayBuffer(raw.length));for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);return bytes;
+}
 
 export default function App() {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
@@ -282,7 +287,8 @@ function AutoResetPicker({
 // ─── Dashboard ──────────────────────────────────────────────────────────────
 
 function Dashboard({ token, onLogout }: { token: string; onLogout: () => void }) {
-  const [activeTab, setActiveTab] = useState<'accounts' | 'approvals' | 'finance' | 'history' | 'settings'>('accounts');
+  const requestedTab=new URLSearchParams(window.location.search).get('tab');
+  const [activeTab, setActiveTab] = useState<'accounts' | 'approvals' | 'finance' | 'history' | 'settings'>(()=>['accounts','approvals','finance','history','settings'].includes(String(requestedTab))?requestedTab as 'accounts'|'approvals'|'finance'|'history'|'settings':'accounts');
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -291,6 +297,8 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
   const [historyShown, setHistoryShown] = useState(5);
   const [revealed, setRevealed] = useState<Record<string, boolean>>({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [pushState,setPushState]=useState<PushState>('checking');
+  const [pushMessage,setPushMessage]=useState('');
 
   // add form
   const [showAdd, setShowAdd] = useState(false);
@@ -343,6 +351,11 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
   }, [authHeaders, onLogout]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(()=>{
+    if(!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window)){setPushState('unsupported');return;}
+    navigator.serviceWorker.register('/sw.js').then(async registration=>setPushState(await registration.pushManager.getSubscription()?'on':'off')).catch(()=>setPushState('unsupported'));
+  },[]);
 
   // Tick every second so "ends in ..." countdowns update live.
   useEffect(() => {
@@ -465,6 +478,25 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
     } catch { /* ignore */ }
   }
 
+  async function enablePush(){
+    setPushMessage('');
+    try{
+      if(pushState==='on'){setPushMessage('Approval notifications are already enabled on this device.');return;}
+      const isIOS=/iPhone|iPad|iPod/i.test(navigator.userAgent),standalone=window.matchMedia('(display-mode: standalone)').matches||Boolean((navigator as Navigator&{standalone?:boolean}).standalone);
+      if(isIOS&&!standalone)throw new Error('On iPhone: open this site in Safari, tap Share, choose Add to Home Screen, then open the new FlingRoulette icon.');
+      if(!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window))throw new Error('Push notifications are not supported in this browser.');
+      const permission=await Notification.requestPermission();
+      if(permission!=='granted')throw new Error('Notifications were not allowed. You can enable them later in iPhone Settings → Notifications.');
+      const registration=await navigator.serviceWorker.register('/sw.js');
+      const keyResponse=await fetch('/api/push/public-key',{headers:authHeaders()});const keyBody=await keyResponse.json();
+      if(!keyResponse.ok)throw new Error(keyBody.error||'Could not prepare notifications');
+      const subscription=await registration.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:vapidBytes(keyBody.publicKey)});
+      const response=await fetch('/api/push/subscribe',{method:'POST',headers:authHeaders(),body:JSON.stringify(subscription.toJSON())});const body=await response.json();
+      if(!response.ok)throw new Error(body.error||'Could not enable notifications');
+      setPushState('on');setPushMessage('Approval notifications enabled on this device.');
+    }catch(err){setPushState('off');setPushMessage(err instanceof Error?err.message:'Could not enable notifications');}
+  }
+
   function onToggleAuto(acc: Account) {
     if (acc.autoResetAt) {
       cancelAutoReset(acc.id);
@@ -503,13 +535,10 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
             </span>
             <div><h1 className="font-heading text-lg font-bold text-slate-900">FlingRoulette</h1><p className="text-[10px] font-semibold tracking-[0.16em] uppercase text-slate-400">Admin</p></div>
           </div>
-          <button
-            onClick={onLogout}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
-          >
-            <Icon path={ICONS.logout} className="w-4 h-4" />
-            <span>Log out</span>
-          </button>
+          <div className="flex items-center gap-1">
+            <button onClick={enablePush} disabled={pushState==='checking'} className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg transition-colors ${pushState==='on'?'bg-emerald-50 text-emerald-700':'text-slate-600 hover:text-slate-900 hover:bg-slate-100'}`}><span>{pushState==='on'?'●':'🔔'}</span><span>{pushState==='on'?'Alerts on':'Enable alerts'}</span></button>
+            <button onClick={onLogout} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"><Icon path={ICONS.logout} className="w-4 h-4" /><span className="hidden sm:inline">Log out</span></button>
+          </div>
         </div>
         <div className="max-w-3xl mx-auto px-4 sm:px-5 pb-3 overflow-x-auto">
           <nav className="admin-tabs" aria-label="Dashboard sections">
@@ -521,6 +550,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
       </header>
 
       <main className="max-w-3xl mx-auto px-4 sm:px-5 py-6">
+        {pushMessage&&<div className={`mb-4 rounded-xl border px-3.5 py-2.5 text-sm ${pushState==='on'?'border-emerald-200 bg-emerald-50 text-emerald-700':'border-amber-200 bg-amber-50 text-amber-800'}`}>{pushMessage}</div>}
         {activeTab === 'settings' ? (
           <>
             <PaymentSettingsPanel token={token} />
