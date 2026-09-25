@@ -54,7 +54,7 @@ function withSchedule(rows: AccountRow[]) {
 
 // List all accounts (newest first)
 accountsRouter.get('/', (_req: Request, res: Response) => {
-  if (process.env.SANDBOX_MODE !== 'true') expireSold();
+  expireSold();
   const rows = db
     .prepare('SELECT id, name, email, password, sold, sold_until, last_reset_at, created_at FROM accounts ORDER BY created_at DESC')
     .all() as AccountRow[];
