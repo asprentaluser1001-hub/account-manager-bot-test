@@ -1,6 +1,6 @@
 # Account Manager + Telegram booking sandbox
 
-**This repository is a test project.** It uses sample accounts and simulated payment claims; it does not collect money or reset external accounts. Follow [TESTING.md](TESTING.md) for the correct setup. The older deployment instructions below describe the original account manager and do not apply to the test bot.
+**This repository is a test project.** It uses sample accounts and simulated payment claims; it does not collect money or reset external accounts. Follow [TESTING.md](TESTING.md) for the correct setup.
 
 ## Quick start on a computer or test VPS
 
@@ -25,3 +25,18 @@ npm start
 
 Open `http://localhost:4000` on the computer running the server and log in with `ADMIN_PASSWORD`. Keep port 4000 private. To test the bot, send `/id` to your bot from your admin Telegram account; add the numeric ID to `TELEGRAM_ADMIN_ID` in `.env` and restart. From a separate customer Telegram account, send `/start`, choose a duration and tap **Simulate payment claim**. Approve the sample order from the buttons sent to your admin account. Check orders and history on the dashboard.
 
+
+## Customer menu update
+
+The existing password-protected dashboard at `/` supports adding, editing and deleting sample IDs and viewing booking history. Sandbox IDs must use a name beginning with `Sample` and an email ending in `@example.invalid`.
+
+The bot now checks availability before showing plans and creating an order; approval checks it again atomically. An unpaid order does not reserve inventory. Times start at admin approval. Rates are 1 hour ₹100, 2 hours ₹150, 3 hours ₹200, 7 days ₹750, and 30 days ₹1800. A month means exactly 30 days.
+
+From the configured admin Telegram account:
+- Send `/supportuser your_username` to set the direct support button (your public username, not the bot username).
+- Send a photo with caption `/proof` to save a proof screenshot. Maximum five photos. Use `/clearproofs` to remove the set. Upload only screenshots intended for customers.
+- New visitors get the rate list and saved photos. Returning customers can use **Rates & proofs** to view them again. Settings and visitor records survive restarts.
+
+Payments remain simulated. QR collection is not implemented. Telegram requires Stars for digital goods sold inside bots: https://core.telegram.org/bots/payments-stars . Do not treat this sandbox as a live checkout.
+
+To update an existing test VPS, stop its running test process, run `git pull --ff-only` in the repository, rebuild the client and server with `npm run build` in each directory, then run `npm start` from `server`. Existing `.env` and database files are retained. Dashboard access from a phone still needs a private tunnel or secured deployment; localhost in phone Safari refers to the phone, not the VPS.

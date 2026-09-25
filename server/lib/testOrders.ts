@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from 'crypto';
 import { db } from '../db';
 
 export type TestOrder = { id:string; chat_id:string; username:string; hours:number; amount:number; status:string; account_id:string|null; created_at:string; claimed_at:string|null; approved_at:string|null; expires_at:string|null; delivered_at:string|null; error:string|null };
-export const PRICES: Record<number,number> = {1:100,2:190,3:270};
+export const PRICES: Record<number,number> = {1:100,2:150,3:200,168:750,720:1800};
 
 db.exec(`CREATE TABLE IF NOT EXISTS test_orders (
  id TEXT PRIMARY KEY, chat_id TEXT NOT NULL, username TEXT NOT NULL, hours INTEGER NOT NULL,
@@ -17,6 +17,7 @@ export function getOrder(id:string):TestOrder|undefined {return db.prepare('SELE
 export function recentOrders():TestOrder[]{return db.prepare('SELECT * FROM test_orders ORDER BY created_at DESC LIMIT 200').all() as TestOrder[];}
 export function createOrder(chatId:string,username:string,hours:number):TestOrder {
  if (!PRICES[hours] || !/^\d{1,20}$/.test(chatId) || username.length > 64) throw new Error('Invalid order');
+ if(!availableAccounts().length) throw new Error('No IDs are available right now. Please try again later or contact support.');
  const id='TEST-'+randomUUID().slice(0,8).toUpperCase(), now=new Date().toISOString();
  db.prepare('INSERT INTO test_orders (id,chat_id,username,hours,amount,status,created_at) VALUES (?,?,?,?,?,?,?)').run(id,chatId,username,hours,PRICES[hours],'awaiting_payment_claim',now);
  return getOrder(id)!;
