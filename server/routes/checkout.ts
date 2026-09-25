@@ -3,6 +3,7 @@ import {adminAuth} from '../auth';
 import {availableAccounts,createWebOrder,PRICES,publicWebOrder,submitWebProof} from '../lib/testOrders';
 import {db} from '../db';
 import {sendAdminClaim} from '../lib/telegramBot';
+import {sendApprovalPush} from './push';
 
 db.exec(`CREATE TABLE IF NOT EXISTS payment_settings (key TEXT PRIMARY KEY,value TEXT NOT NULL);`);
 const getSetting=(key:string)=>(db.prepare('SELECT value FROM payment_settings WHERE key=?').get(key) as {value:string}|undefined)?.value||'';
@@ -24,7 +25,7 @@ checkoutRouter.post('/orders',json({limit:'32kb'}),(req,res)=>{
  catch(error){return res.status(400).json({error:error instanceof Error?error.message:'Could not create order'});}
 });
 checkoutRouter.post('/orders/:id/proof',json({limit:'5mb'}),async(req,res)=>{
- try{if(limited(req))return res.status(429).json({error:'Too many attempts. Please wait and try again.'});const order=submitWebProof(req.params.id,String(req.body.accessToken||''),String(req.body.paymentReference||''),String(req.body.proofDataUrl||''));const adminAlerted=await sendAdminClaim(order);return res.json({status:order.status,adminAlerted});}
+ try{if(limited(req))return res.status(429).json({error:'Too many attempts. Please wait and try again.'});const order=submitWebProof(req.params.id,String(req.body.accessToken||''),String(req.body.paymentReference||''),String(req.body.proofDataUrl||''));const [adminAlerted,pushAlerts]=await Promise.all([sendAdminClaim(order),sendApprovalPush(order)]);return res.json({status:order.status,adminAlerted,pushAlerts});}
  catch(error){return res.status(400).json({error:error instanceof Error?error.message:'Could not submit payment proof'});}
 });
 checkoutRouter.get('/orders/:id',(req,res)=>{
