@@ -150,7 +150,8 @@ async function handleCallback(c:any){
   } else if(data.startsWith('hours:')){
    const hours=Number(data.slice(6));
    if(checkoutUrl){
-    const link=new URL(checkoutUrl);link.searchParams.set('hours',String(hours));
+    const order=createOrder(chatId,String(c.from?.username||c.from?.first_name||'customer'),hours);
+    const link=new URL(checkoutUrl);link.searchParams.set('hours',String(hours));link.searchParams.set('order',order.id);link.searchParams.set('token',String(order.access_token||''));link.searchParams.set('amount',String(order.amount));
     await say(chatId,`Open the payment page for ${duration(hours)}. The QR download is available there.`,buttons([[{text:'Open payment page',url:link.toString()}],[homeButton]]));
    }else{
     const order=createOrder(chatId,String(c.from?.username||c.from?.first_name||'customer'),hours);
@@ -162,9 +163,14 @@ async function handleCallback(c:any){
    const id=data.slice(6),order=getOrder(id);if(!order||order.status!=='payment_claimed')throw new Error('Order is no longer awaiting approval');
    const options=availableAccounts();await say(adminId,options.length?`Select an account for ${id}:`:'No accounts available.',buttons(options.map(a=>[{text:a.name,callback_data:`approve:${id}:${a.id}`}])));
   } else if(chatId===adminId && data.startsWith('approve:')){
-   const [,id,accountId]=data.split(':');const details=approveOrder(id,accountId);const delivered=await sendCustomerDelivery(details.order,details.email,details.password);
-   if(delivered)markDelivered(id);else markDeliveryFailed(id,'Telegram delivery failed; account remains reserved.');
-   await say(adminId,delivered?`${id} approved and delivered. Reset scheduled for ${details.order.expires_at}.`:`${id} approved but delivery failed. Account remains reserved; check the dashboard.`);
+   const [,id,accountId]=data.split(':');const details=approveOrder(id,accountId);
+   if(details.order.source==='web'){
+    markDelivered(id);await say(adminId,`${id} approved. The customer's checkout page now shows the account. Reset scheduled for ${details.order.expires_at}.`);
+   }else{
+    const delivered=await sendCustomerDelivery(details.order,details.email,details.password);
+    if(delivered)markDelivered(id);else markDeliveryFailed(id,'Telegram delivery failed; account remains reserved.');
+    await say(adminId,delivered?`${id} approved and delivered. Reset scheduled for ${details.order.expires_at}.`:`${id} approved but delivery failed. Account remains reserved; check the dashboard.`);
+   }
   } else if(chatId===adminId && data.startsWith('reject:')){
    rejectOrder(data.slice(7));await say(adminId,'Payment claim rejected.');
   }
