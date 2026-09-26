@@ -1,0 +1,7 @@
+<svg role="img" aria-labelledby="title" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+  <title id="title">UPI</title>
+  <rect width="48" height="48" rx="12" fill="#FFFFFF"/>
+  <path fill="#F36F21" d="M24.5 8h6.2L20.2 40H14z"/>
+  <path fill="#158A45" d="M31.6 8h6.2L27.3 40h-6.2z"/>
+  <path fill="#20252B" d="M9.4 19.2h3.3v7.3c0 1.7.6 2.4 1.9 2.4s1.9-.7 1.9-2.4v-7.3h3.3v7.5c0 3.6-1.8 5.2-5.2 5.2s-5.2-1.6-5.2-5.2z"/>
+</svg>

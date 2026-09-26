@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import OrdersPanel from './OrdersPanel';
 import BotSettingsPanel from './BotSettingsPanel';
 import PaymentSettingsPanel from './PaymentSettingsPanel';
+import { APP_NAME, APP_VERSION, BUILD_NUMBER, COPYRIGHT_OWNER } from './version';
 import Checkout from './Checkout';
 
 interface Account {
@@ -288,7 +289,7 @@ function AutoResetPicker({
 
 function Dashboard({ token, onLogout }: { token: string; onLogout: () => void }) {
   const requestedTab=new URLSearchParams(window.location.search).get('tab');
-  const [activeTab, setActiveTab] = useState<'accounts' | 'approvals' | 'finance' | 'history' | 'settings'>(()=>['accounts','approvals','finance','history','settings'].includes(String(requestedTab))?requestedTab as 'accounts'|'approvals'|'finance'|'history'|'settings':'accounts');
+  const [activeTab, setActiveTab] = useState<'accounts' | 'approvals' | 'manual' | 'finance' | 'history' | 'settings'>(()=>['accounts','approvals','manual','finance','history','settings'].includes(String(requestedTab))?requestedTab as 'accounts'|'approvals'|'manual'|'finance'|'history'|'settings':'accounts');
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -542,7 +543,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
         </div>
         <div className="max-w-3xl mx-auto px-4 sm:px-5 pb-3 overflow-x-auto">
           <nav className="admin-tabs" aria-label="Dashboard sections">
-            {([['accounts','Accounts'],['approvals','Approvals'],['finance','Finance'],['history','History'],['settings','Settings']] as const).map(([id,label]) => (
+            {([['accounts','Accounts'],['approvals','Approvals'],['manual','Manual booking'],['finance','Finance'],['history','History'],['settings','Settings']] as const).map(([id,label]) => (
               <button key={id} onClick={() => setActiveTab(id)} className={activeTab === id ? 'active' : ''}>{label}</button>
             ))}
           </nav>
@@ -833,6 +834,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
         </div>
 
         {activeTab === 'approvals' && <OrdersPanel token={token} view="approvals" />}
+        {activeTab === 'manual' && <OrdersPanel token={token} view="manual" />}
         {activeTab === 'finance' && <OrdersPanel token={token} view="finance" />}
 
         {/* ─── Reset History ─────────────────────────────────── */}
@@ -1006,6 +1008,28 @@ function SettingsPanel({ token, onLogout, onBack }: { token: string; onLogout: (
             {loading ? 'Updating…' : 'Update password'}
           </button>
         </form>
+      </div>
+
+      <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="flex items-center gap-3 border-b border-slate-100 p-5">
+          <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-pink-500 to-violet-600 text-xs font-black text-white shadow-sm">FR</div>
+          <div>
+            <h3 className="font-heading text-base font-semibold text-slate-900">{APP_NAME}</h3>
+            <p className="mt-0.5 text-xs text-slate-500">Admin &amp; checkout system</p>
+          </div>
+          <span className="ml-auto rounded-full bg-violet-50 px-2.5 py-1 text-xs font-bold text-violet-700">V{APP_VERSION}</span>
+        </div>
+        <dl className="divide-y divide-slate-100 px-5 text-sm">
+          <div className="flex items-center justify-between gap-4 py-3">
+            <dt className="text-slate-500">Build number</dt>
+            <dd className="font-mono text-xs font-semibold text-slate-800">{BUILD_NUMBER}</dd>
+          </div>
+          <div className="flex items-center justify-between gap-4 py-3">
+            <dt className="text-slate-500">Release</dt>
+            <dd className="font-medium text-slate-800">Version {APP_VERSION}</dd>
+          </div>
+        </dl>
+        <p className="border-t border-slate-100 bg-slate-50 px-5 py-3 text-center text-xs text-slate-500">© {new Date().getFullYear()} {COPYRIGHT_OWNER}. All rights reserved.</p>
       </div>
     </div>
   );

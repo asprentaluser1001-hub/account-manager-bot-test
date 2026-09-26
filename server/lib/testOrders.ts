@@ -19,6 +19,7 @@ for (const [name, definition] of [
  ['customer_contact', 'TEXT'],
  ['payment_reference', 'TEXT'],
  ['proof_data_url', 'TEXT'],
+ ['end_notified_at', 'TEXT'],
 ] as const) {
  const columns=db.prepare('PRAGMA table_info(test_orders)').all() as Array<{name:string}>;
  if(!columns.some(column=>column.name===name))db.exec(`ALTER TABLE test_orders ADD COLUMN ${name} ${definition}`);
@@ -39,6 +40,19 @@ export function createWebOrder(name:string,contact:string,hours:number):{order:T
  const id='WEB-'+randomUUID().slice(0,8).toUpperCase(),accessToken=randomBytes(24).toString('base64url'),now=new Date().toISOString();
  db.prepare("INSERT INTO test_orders (id,chat_id,username,hours,amount,status,created_at,source,access_token,customer_contact) VALUES (?,?,?,?,?,?,?,'web',?,?)").run(id,'web',name,hours,PRICES[hours],'awaiting_payment_claim',now,accessToken,contact);
  return {order:getOrder(id)!,accessToken};
+}
+export function createManualBooking(name:string,contact:string,hours:number,amount:number,accountId:string):TestOrder {
+ name=name.trim();contact=contact.trim();
+ if(name.length<2||name.length>64||contact.length>100||!PRICES[hours]||!Number.isSafeInteger(amount)||amount<0||amount>100000)throw new Error('Enter a valid customer, duration and amount');
+ const id='MAN-'+randomUUID().slice(0,8).toUpperCase(),now=new Date(),ends=new Date(now.getTime()+hours*3600000).toISOString();
+ return db.transaction(()=>{
+  if(!availableAccounts().some(account=>account.id===accountId))throw new Error('Account is unavailable');
+  const sold=db.prepare('UPDATE accounts SET sold=1,sold_until=? WHERE id=? AND sold=0').run(ends,accountId);
+  if(!sold.changes)throw new Error('Account is already in use');
+  db.prepare("INSERT INTO auto_reset_schedule(account_id,run_at,status,created_at) VALUES (?,?,'pending',?) ON CONFLICT(account_id) DO UPDATE SET run_at=excluded.run_at,status='pending',created_at=excluded.created_at").run(accountId,ends,now.toISOString());
+  db.prepare("INSERT INTO test_orders(id,chat_id,username,hours,amount,status,account_id,created_at,approved_at,expires_at,source,customer_contact) VALUES (?,?,?,?,?,'delivered',?,?,?,?, 'manual',?)").run(id,'manual',name,hours,amount,accountId,now.toISOString(),now.toISOString(),ends,contact||null);
+  return getOrder(id)!;
+ })();
 }
 export function submitWebProof(id:string,accessToken:string,paymentReference:string,proofDataUrl:string):TestOrder{
  const match=/^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/.exec(proofDataUrl);
@@ -105,6 +119,10 @@ export function sandboxReset(accountId:string):{success:boolean;newPassword?:str
  return {success:true,newPassword};
 }
 export function summary(){
- const paid=db.prepare("SELECT COUNT(*) as sales,COALESCE(SUM(amount),0) as revenue FROM test_orders WHERE status IN ('approved','delivered','expired','delivery_failed','reset_failed')").get() as {sales:number;revenue:number};
+ const paid=db.prepare("SELECT COUNT(*) as sales,COALESCE(SUM(amount),0) as revenue FROM test_orders WHERE status IN ('approved','delivered','expired','delivery_failed','reset_failed') AND approved_at >= '2026-09-25T18:30:00.000Z'").get() as {sales:number;revenue:number};
  return {...paid,bookings:(db.prepare("SELECT COUNT(*) as n FROM test_orders").get() as {n:number}).n,customers:(db.prepare("SELECT COUNT(DISTINCT chat_id) as n FROM test_orders").get() as {n:number}).n,pending:db.prepare("SELECT COUNT(*) as n FROM test_orders WHERE status='payment_claimed'").get() as {n:number},available:availableAccounts().length};
+}
+export function finance(){
+ const rows=db.prepare("SELECT date(approved_at,'+330 minutes') AS day, COUNT(*) AS bookings, SUM(amount) AS amount FROM test_orders WHERE status IN ('approved','delivered','expired','delivery_failed','reset_failed') AND approved_at >= '2026-09-25T18:30:00.000Z' GROUP BY day ORDER BY day DESC").all() as Array<{day:string;bookings:number;amount:number}>;
+ return {days:rows,cutoff:'2026-09-26'};
 }

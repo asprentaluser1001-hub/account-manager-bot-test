@@ -2,6 +2,8 @@ import { db, AutoResetRow } from '../db';
 import { resetAccountPassword } from './passwordReset';
 import { logResetHistory } from './history';
 import { markReset } from './testOrders';
+import { sendAdminBookingEnd } from './telegramBot';
+import { sendBookingEndPush } from '../routes/push';
 
 /**
  * Auto-reset scheduler.
@@ -55,6 +57,11 @@ async function processSchedule(row: AutoResetRow): Promise<void> {
   const accountName = acc?.name || 'Unknown';
 
   try {
+    const ended=db.prepare("SELECT * FROM test_orders WHERE account_id=? AND status IN ('approved','delivered','delivery_failed') AND end_notified_at IS NULL AND expires_at<=? ORDER BY expires_at DESC LIMIT 1").get(accountId,new Date().toISOString()) as import('./testOrders').TestOrder|undefined;
+    if(ended){
+      db.prepare('UPDATE test_orders SET end_notified_at=? WHERE id=? AND end_notified_at IS NULL').run(new Date().toISOString(),ended.id);
+      await Promise.allSettled([sendAdminBookingEnd(ended),sendBookingEndPush(ended)]);
+    }
     log(`account ${accountId}: starting auto reset (batch 1)`);
     let result = await attemptBatch(accountId);
 

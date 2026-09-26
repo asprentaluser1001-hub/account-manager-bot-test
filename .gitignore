@@ -18,6 +18,7 @@ data.db-shm
 # OS / editor
 .DS_Store
 *.log
+*.tsbuildinfo
 
 # Sandbox databases and temporary SQLite files
 *.db

@@ -42,13 +42,13 @@ pushRouter.post('/unsubscribe',json({limit:'8kb'}),(req,res)=>{
  db.prepare('DELETE FROM push_subscriptions WHERE endpoint=?').run(String(req.body?.endpoint||''));return res.json({ok:true});
 });
 
-export async function sendApprovalPush(order:TestOrder):Promise<number>{
+async function sendPush(payload:{title:string;body:string;url:string;tag:string}):Promise<number>{
  const subscriptions=db.prepare('SELECT endpoint,p256dh,auth FROM push_subscriptions').all() as Array<{endpoint:string;p256dh:string;auth:string}>;
  let sent=0;
  await Promise.all(subscriptions.map(async row=>{
   const subscription:PushSubscription={endpoint:row.endpoint,keys:{p256dh:row.p256dh,auth:row.auth}};
   try{
-   await webPush.sendNotification(subscription,JSON.stringify({title:'Approval waiting',body:`${order.username} · ₹${order.amount} · ${order.id}`,url:'/?tab=approvals',tag:order.id}));sent+=1;
+   await webPush.sendNotification(subscription,JSON.stringify(payload));sent+=1;
   }catch(error){
    const status=(error as {statusCode?:number}).statusCode;
    if(status===404||status===410)db.prepare('DELETE FROM push_subscriptions WHERE endpoint=?').run(row.endpoint);
@@ -56,4 +56,10 @@ export async function sendApprovalPush(order:TestOrder):Promise<number>{
   }
  }));
  return sent;
+}
+export function sendApprovalPush(order:TestOrder):Promise<number>{
+ return sendPush({title:'Approval waiting',body:`${order.username} · ₹${order.amount} · ${order.id}`,url:'/?tab=approvals',tag:order.id});
+}
+export function sendBookingEndPush(order:TestOrder):Promise<number>{
+ return sendPush({title:'Booking time ended',body:`${order.username} · ${order.id} · password reset is starting`,url:'/?tab=accounts',tag:`end-${order.id}`});
 }

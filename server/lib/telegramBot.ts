@@ -103,6 +103,11 @@ export async function sendAdminClaim(order:TestOrder){
  try {await say(adminId,`${sandboxMode?'TEST ':''}Payment claim\nOrder ${order.id} · ${customer} · ${duration(order.hours)} · ₹${order.amount}\nCheck the proof in the Approvals tab before delivering access.`,buttons([[{text:'Show available accounts',callback_data:`stock:${order.id}`}],[{text:'Reject claim',callback_data:`reject:${order.id}`}],[homeButton]]));return true;}
  catch(e){console.error('[Bot] Admin alert failed',e);return false;}
 }
+export async function sendAdminBookingEnd(order:TestOrder){
+ if(!token||!adminId)return false;
+ try{await say(adminId,`Booking time ended\n${order.username} · ${order.id}\nPassword reset is starting. Check Accounts for the result.`);return true;}
+ catch(e){console.error('[Bot] Booking end alert failed',e);return false;}
+}
 export async function sendCustomerDelivery(order:TestOrder,email:string,password:string){
  if(!token)return false;
  try {await say(order.chat_id,`TEST ACCESS · ${order.id}\nLogin: ${email}\nPassword: ${password}\nEnds: ${order.expires_at}\nOnly sample credentials are used in this sandbox.`,buttons([[homeButton]]));return true;}
