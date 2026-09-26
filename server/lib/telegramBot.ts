@@ -155,9 +155,8 @@ async function handleCallback(c:any){
   } else if(data.startsWith('hours:')){
    const hours=Number(data.slice(6));
    if(checkoutUrl){
-    const order=createOrder(chatId,String(c.from?.username||c.from?.first_name||'customer'),hours);
-    const link=new URL(checkoutUrl);link.searchParams.set('hours',String(hours));link.searchParams.set('order',order.id);link.searchParams.set('token',String(order.access_token||''));link.searchParams.set('amount',String(order.amount));
-    await say(chatId,`Open the payment page for ${duration(hours)}. The QR download is available there.`,buttons([[{text:'Open payment page',url:link.toString()}],[homeButton]]));
+    const link=new URL('/checkout',checkoutUrl);link.searchParams.set('hours',String(hours));link.searchParams.set('new','1');
+    await say(chatId,`Book ${duration(hours)} through IMB. Enter your name on the checkout page, then continue to secure payment.`,buttons([[{text:'Book through IMB',url:link.toString()}],[homeButton]]));
    }else{
     const order=createOrder(chatId,String(c.from?.username||c.from?.first_name||'customer'),hours);
     await say(chatId,`TEST ORDER ${order.id}\n${duration(order.hours)} · ₹${order.amount}\nNo payment is collected in this test. Tap below to simulate a payment claim.`,buttons([[{text:'Simulate payment claim',callback_data:`claim:${order.id}`}],[homeButton]]));
