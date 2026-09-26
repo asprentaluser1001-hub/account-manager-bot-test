@@ -31,4 +31,4 @@ export async function checkImbOrder(orderId:string){
  return postForm<ImbStatusResult>('check-order-status',{order_id:orderId});
 }
 
-export function isImbConfigured(){return Boolean(process.env.IMB_API_TOKEN?.trim());}
+export function isImbConfigured(){return process.env.V3_PREVIEW!=='true' && process.env.PAYMENT_MODE!=='mock' && Boolean(process.env.IMB_API_TOKEN?.trim());}
