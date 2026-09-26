@@ -4,6 +4,7 @@ import BotSettingsPanel from './BotSettingsPanel';
 import PaymentSettingsPanel from './PaymentSettingsPanel';
 import { APP_NAME, APP_VERSION, BUILD_NUMBER, COPYRIGHT_OWNER } from './version';
 import Checkout from './Checkout';
+import OverviewPanel from './OverviewPanel';
 
 interface Account {
   id: string;
@@ -54,6 +55,9 @@ function Icon({ path, className = 'w-4 h-4', stroke = 1.7 }: { path: string; cla
     </svg>
   );
 }
+function BrandMark() {
+  return <span className="v3-mark" aria-hidden="true"><svg viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="18" stroke="currentColor" strokeWidth="1.4"/><path d="M13 29V17c0-5 3-8 8-8h8M13 19h14c0 5-3 8-8 8h-6" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/></svg></span>;
+}
 const ICONS = {
   shield: 'M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z',
   logout: 'M15 12H3m0 0l4-4m-4 4l4 4M13 4h6a1 1 0 011 1v14a1 1 0 01-1 1h-6',
@@ -98,13 +102,11 @@ function Login({ onLogin }: { onLogin: (token: string) => void }) {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-5 bg-slate-50">
-      <form onSubmit={submit} className="w-full max-w-sm bg-white rounded-2xl border border-slate-200 shadow-sm p-7">
+    <div className="v3-shell v3-login min-h-screen flex items-center justify-center p-5 bg-slate-50">
+      <form onSubmit={submit} className="v3-glass w-full max-w-sm bg-white rounded-2xl border border-slate-200 shadow-sm p-7">
         <div className="flex items-center gap-2.5 mb-1">
-          <span className="grid place-items-center w-9 h-9 rounded-xl bg-slate-900 text-white">
-            <Icon path={ICONS.shield} className="w-5 h-5" />
-          </span>
-          <h1 className="font-heading text-xl font-bold text-slate-900">Account Manager</h1>
+          <BrandMark />
+          <h1 className="font-heading text-xl font-bold text-slate-900">FlingRoulette</h1>
         </div>
         <p className="font-body text-sm text-slate-500 mt-1 mb-5">Enter admin password to continue</p>
         <input
@@ -290,7 +292,8 @@ function AutoResetPicker({
 
 function Dashboard({ token, onLogout }: { token: string; onLogout: () => void }) {
   const requestedTab=new URLSearchParams(window.location.search).get('tab');
-  const [activeTab, setActiveTab] = useState<'accounts' | 'approvals' | 'manual' | 'finance' | 'history' | 'settings'>(()=>['accounts','approvals','manual','finance','history','settings'].includes(String(requestedTab))?requestedTab as 'accounts'|'approvals'|'manual'|'finance'|'history'|'settings':'accounts');
+  type Tab = 'overview' | 'accounts' | 'approvals' | 'manual' | 'finance' | 'history' | 'settings';
+  const [activeTab, setActiveTab] = useState<Tab>(()=>['overview','accounts','approvals','manual','finance','history','settings'].includes(String(requestedTab))?requestedTab as Tab:'overview');
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -527,14 +530,12 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
     'w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400';
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="v3-shell min-h-screen bg-slate-50">
       {/* Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
+      <header className="v3-header bg-white border-b border-slate-200 sticky top-0 z-10">
         <div className="max-w-3xl mx-auto px-4 sm:px-5 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <span className="grid place-items-center w-9 h-9 rounded-xl bg-slate-900 text-white">
-              <Icon path={ICONS.shield} className="w-5 h-5" />
-            </span>
+            <BrandMark />
             <div><h1 className="font-heading text-lg font-bold text-slate-900">FlingRoulette</h1><p className="text-[10px] font-semibold tracking-[0.16em] uppercase text-slate-400">Admin</p></div>
           </div>
           <div className="flex items-center gap-1">
@@ -544,16 +545,16 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
         </div>
         <div className="max-w-3xl mx-auto px-4 sm:px-5 pb-3 overflow-x-auto">
           <nav className="admin-tabs" aria-label="Dashboard sections">
-            {([['accounts','Accounts'],['approvals','Approvals'],['manual','Manual booking'],['finance','Finance'],['history','History'],['settings','Settings']] as const).map(([id,label]) => (
+            {([['overview','Home'],['accounts','Accounts'],['approvals','Approvals'],['manual','Manual booking'],['finance','Finance'],['history','History'],['settings','Settings']] as const).map(([id,label]) => (
               <button key={id} onClick={() => setActiveTab(id)} className={activeTab === id ? 'active' : ''}>{label}</button>
             ))}
           </nav>
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 sm:px-5 py-6">
+      <main className="v3-main max-w-3xl mx-auto px-4 sm:px-5 py-6">
         {pushMessage&&<div className={`mb-4 rounded-xl border px-3.5 py-2.5 text-sm ${pushState==='on'?'border-emerald-200 bg-emerald-50 text-emerald-700':'border-amber-200 bg-amber-50 text-amber-800'}`}>{pushMessage}</div>}
-        {activeTab === 'settings' ? (
+        {activeTab === 'overview' ? <OverviewPanel token={token} accounts={accounts} onNavigate={setActiveTab} /> : activeTab === 'settings' ? (
           <>
             <PaymentSettingsPanel token={token} />
             <BotSettingsPanel token={token} />
