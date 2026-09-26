@@ -24,9 +24,10 @@ checkoutRouter.get('/config',(_req,res)=>res.json(clientConfig()));
 checkoutRouter.post('/orders',json({limit:'32kb'}),async(req,res)=>{
  try{
   if(limited(req))return res.status(429).json({error:'Too many attempts. Please wait and try again.'});
-  if(!isImbConfigured())return res.status(503).json({error:'IMB payment is temporarily unavailable. Please contact support.'});
+  const mockPayment=process.env.V3_PREVIEW==='true' && process.env.PAYMENT_MODE==='mock';
+  if(!mockPayment && !isImbConfigured())return res.status(503).json({error:'IMB payment is temporarily unavailable. Please contact support.'});
   const result=createWebOrder(String(req.body.name||''),'',Number(req.body.hours));
-  if(isImbConfigured()){
+  if(!mockPayment && isImbConfigured()){
    try{
     const base=process.env.PUBLIC_CHECKOUT_URL||`${req.protocol}://${req.get('host')}/checkout`;
     const redirect=new URL('/checkout',base);redirect.searchParams.set('order',result.order.id);redirect.searchParams.set('token',result.accessToken);redirect.searchParams.set('amount',String(result.order.amount));redirect.searchParams.set('hours',String(result.order.hours));
