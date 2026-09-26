@@ -34,14 +34,17 @@ historyRouter.use(adminAuth);
 function expireSold() {
   const now = new Date().toISOString();
   db.prepare(
-    `UPDATE accounts SET sold = 0, sold_until = NULL WHERE sold = 1 AND sold_until IS NOT NULL AND sold_until <= ?`
+    `UPDATE accounts SET sold = 0, sold_until = NULL
+     WHERE sold = 1 AND sold_until IS NOT NULL AND sold_until <= ?
+       AND NOT EXISTS (SELECT 1 FROM auto_reset_schedule s WHERE s.account_id = accounts.id AND s.status IN ('pending','running','failed'))
+       AND NOT EXISTS (SELECT 1 FROM test_orders o WHERE o.account_id = accounts.id AND o.status IN ('approved','delivered','delivery_failed','reset_failed'))`
   ).run(now);
 }
 
 // Attach the pending auto-reset schedule (if any) to each account row.
 function withSchedule(rows: AccountRow[]) {
   const schedules = db
-    .prepare(`SELECT account_id, run_at, status FROM auto_reset_schedule WHERE status = 'pending'`)
+    .prepare(`SELECT account_id, run_at, status FROM auto_reset_schedule WHERE status IN ('pending','running','failed')`)
     .all() as AutoResetRow[];
   const map = new Map(schedules.map((s) => [s.account_id, s]));
   return rows.map((r) => ({
@@ -49,6 +52,7 @@ function withSchedule(rows: AccountRow[]) {
     sold: !!r.sold,
     soldUntil: r.sold_until ?? null,
     autoResetAt: map.get(r.id)?.run_at ?? null,
+    autoResetStatus: map.get(r.id)?.status ?? null,
   }));
 }
 

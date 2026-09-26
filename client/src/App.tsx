@@ -15,6 +15,7 @@ interface Account {
   last_reset_at: string | null;
   created_at: string;
   autoResetAt: string | null;
+  autoResetStatus: string | null;
 }
 
 interface HistoryEntry {
@@ -636,7 +637,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
                         <div className="flex items-center gap-2 flex-wrap mb-2">
                           {autoOn && (
                             <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                              <Icon path={ICONS.shield} className="w-3 h-3" /> Auto-reset on
+                              <Icon path={ICONS.shield} className="w-3 h-3" /> {acc.autoResetStatus==='running'?'Reset in progress':acc.autoResetStatus==='failed'?'Reset needs attention':'Auto-reset on'}
                             </span>
                           )}
                           {acc.sold && (

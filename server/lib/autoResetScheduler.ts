@@ -115,7 +115,8 @@ function tick(): void {
 
 export function startAutoResetScheduler(): void {
   log('started (checks every minute)');
-  if(process.env.SANDBOX_MODE === 'true') db.prepare("UPDATE auto_reset_schedule SET status='pending' WHERE status='running'").run();
+  // Resume work interrupted by a process restart in every environment.
+  db.prepare("UPDATE auto_reset_schedule SET status='pending' WHERE status='running'").run();
   tick(); // run once on startup for any already-due schedules
   interval = setInterval(tick, CHECK_INTERVAL_MS);
 }
