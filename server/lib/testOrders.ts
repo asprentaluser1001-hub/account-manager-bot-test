@@ -47,7 +47,7 @@ export function createOrder(chatId:string,username:string,hours:number):TestOrde
 }
 export function createWebOrder(name:string,contact:string,hours:number):{order:TestOrder;accessToken:string}{
  name=name.trim();contact=contact.trim();
- if(!PRICES[hours]||name.length<2||name.length>64||contact.length<4||contact.length>100)throw new Error('Enter a valid name and contact detail');
+ if(!PRICES[hours]||name.length<2||name.length>64||contact.length>100)throw new Error('Enter a valid name');
  if(!availableAccounts().length)throw new Error('Currently unavailable. Please try again later.');
  const id='WEB-'+randomUUID().slice(0,8).toUpperCase(),accessToken=randomBytes(24).toString('base64url'),now=new Date().toISOString();
  db.prepare("INSERT INTO test_orders (id,chat_id,username,hours,amount,status,created_at,source,access_token,customer_contact) VALUES (?,?,?,?,?,?,?,'web',?,?)").run(id,'web',name,hours,PRICES[hours],'awaiting_payment_claim',now,accessToken,contact);
