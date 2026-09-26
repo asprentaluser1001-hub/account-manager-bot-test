@@ -82,7 +82,7 @@ export function createManualExtension(name:string,contact:string,amount:number,a
   const newExpiry=new Date(new Date(account.sold_until).getTime()+50*60*1000).toISOString(),created=now.toISOString();
   db.prepare('UPDATE accounts SET sold=1,sold_until=? WHERE id=? AND sold=1').run(newExpiry,accountId);
   db.prepare("INSERT INTO auto_reset_schedule(account_id,run_at,status,created_at) VALUES (?,?,'pending',?) ON CONFLICT(account_id) DO UPDATE SET run_at=excluded.run_at,status='pending',created_at=excluded.created_at").run(accountId,newExpiry,created);
-  db.prepare("INSERT INTO test_orders(id,chat_id,username,hours,amount,status,account_id,created_at,approved_at,expires_at,source,customer_contact,order_type,parent_order_id) VALUES (?,?,?,?,?,'delivered',?,?,?,?, 'manual',?,?, 'extension',?)").run(id,'manual',name,1,50,accountId,created,created,newExpiry,contact||null,parent?.id||null);
+  db.prepare("INSERT INTO test_orders(id,chat_id,username,hours,amount,status,account_id,created_at,approved_at,expires_at,source,customer_contact,order_type,parent_order_id) VALUES (?,?,?,?,?,'delivered',?,?,?,?, 'manual',?, 'extension',?)").run(id,'manual',name,1,50,accountId,created,created,newExpiry,contact||null,parent?.id||null);
   return getOrder(id)!;
  })();
 }
