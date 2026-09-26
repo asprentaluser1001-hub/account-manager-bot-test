@@ -24,6 +24,7 @@ checkoutRouter.get('/config',(_req,res)=>res.json(clientConfig()));
 checkoutRouter.post('/orders',json({limit:'32kb'}),async(req,res)=>{
  try{
   if(limited(req))return res.status(429).json({error:'Too many attempts. Please wait and try again.'});
+  if(!isImbConfigured())return res.status(503).json({error:'IMB payment is temporarily unavailable. Please contact support.'});
   const result=createWebOrder(String(req.body.name||''),'',Number(req.body.hours));
   if(isImbConfigured()){
    try{
