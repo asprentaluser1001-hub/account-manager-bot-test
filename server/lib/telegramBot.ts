@@ -191,3 +191,9 @@ export function startTestBot(){
   for(const u of updates){offset=Math.max(offset,u.update_id+1);try{if(u.message)await handleMessage(u.message);if(u.callback_query)await handleCallback(u.callback_query);}catch(e){console.error('[Bot] Update error',e);}}
  }catch(e){console.error('[Bot] Polling error',e);await new Promise(r=>setTimeout(r,3000));}}})();
 }
+
+export async function sendAdminResetResult(accountName:string,success:boolean){
+ if(!token||!adminId)return false;
+ try{await say(adminId,success?`Reset completed successfully\n${accountName} is now available.`:`Reset failed\n${accountName} remains booked. Check Accounts and History before releasing it.`);return true;}
+ catch(e){console.error('[Bot] Reset result alert failed',e);return false;}
+}
