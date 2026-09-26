@@ -20,9 +20,21 @@ for (const [name, definition] of [
  ['payment_reference', 'TEXT'],
  ['proof_data_url', 'TEXT'],
  ['end_notified_at', 'TEXT'],
+ ['gateway_payment_url','TEXT'],
+ ['gateway_phonepe_link','TEXT'],
+ ['gateway_paytm_link','TEXT'],
+ ['gateway_bhim_link','TEXT'],
+ ['gateway_check_link','TEXT'],
 ] as const) {
  const columns=db.prepare('PRAGMA table_info(test_orders)').all() as Array<{name:string}>;
  if(!columns.some(column=>column.name===name))db.exec(`ALTER TABLE test_orders ADD COLUMN ${name} ${definition}`);
+}
+export function saveGatewayLinks(id:string,links:{payment_url?:string;phonepe_link?:string;paytm_link?:string;bhim_link?:string;check_link?:string}){
+ db.prepare('UPDATE test_orders SET gateway_payment_url=?,gateway_phonepe_link=?,gateway_paytm_link=?,gateway_bhim_link=?,gateway_check_link=? WHERE id=?').run(links.payment_url||null,links.phonepe_link||null,links.paytm_link||null,links.bhim_link||null,links.check_link||null,id);
+}
+export function markGatewayError(id:string,message:string){db.prepare("UPDATE test_orders SET status='payment_gateway_error',error=? WHERE id=? AND status='awaiting_payment_claim'").run(message.slice(0,300),id);}
+export function claimGatewayPayment(id:string,utr:string|null){
+ return db.prepare("UPDATE test_orders SET status='payment_claimed',claimed_at=?,payment_reference=? WHERE id=? AND source='web' AND status='awaiting_payment_claim'").run(new Date().toISOString(),utr,id).changes>0;
 }
 export function getOrder(id:string):TestOrder|undefined {return db.prepare('SELECT * FROM test_orders WHERE id = ?').get(id) as TestOrder|undefined;}
 export function recentOrders():TestOrder[]{return db.prepare('SELECT * FROM test_orders ORDER BY created_at DESC LIMIT 200').all() as TestOrder[];}
@@ -68,7 +80,7 @@ export function submitWebProof(id:string,accessToken:string,paymentReference:str
  return getOrder(id)!;
 }
 export function publicWebOrder(id:string,accessToken:string){
- const order=db.prepare("SELECT id,username,hours,amount,status,created_at,claimed_at,approved_at,expires_at,error FROM test_orders WHERE id=? AND access_token=? AND source IN ('web','telegram')").get(id,accessToken) as Partial<TestOrder>|undefined;
+ const order=db.prepare("SELECT id,username,hours,amount,status,created_at,claimed_at,approved_at,expires_at,error,gateway_payment_url AS payment_url,gateway_phonepe_link AS phonepe_link,gateway_paytm_link AS paytm_link,gateway_bhim_link AS bhim_link FROM test_orders WHERE id=? AND access_token=? AND source IN ('web','telegram')").get(id,accessToken) as (Partial<TestOrder>&{payment_url?:string;phonepe_link?:string;paytm_link?:string;bhim_link?:string})|undefined;
  if(!order)throw new Error('Order not found');
  let credentials:null|{email:string;password:string}=null;
  if(['approved','delivered','delivery_failed'].includes(String(order.status))){
