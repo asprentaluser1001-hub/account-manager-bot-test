@@ -2,8 +2,8 @@ import { db, AutoResetRow } from '../db';
 import { resetAccountPassword } from './passwordReset';
 import { logResetHistory } from './history';
 import { markReset } from './testOrders';
-import { sendAdminBookingEnd } from './telegramBot';
-import { sendBookingEndPush } from '../routes/push';
+import { sendAdminBookingEnd, sendAdminResetResult } from './telegramBot';
+import { sendBookingEndPush, sendResetResultPush } from '../routes/push';
 
 /**
  * Auto-reset scheduler.
@@ -84,6 +84,7 @@ async function processSchedule(row: AutoResetRow): Promise<void> {
     db.prepare(`UPDATE auto_reset_schedule SET status = ? WHERE account_id = ?`)
       .run(result.success ? 'done' : 'failed', accountId);
     markReset(accountId,result.success,result.error);
+    await Promise.allSettled([sendAdminResetResult(accountName,result.success),sendResetResultPush(accountId,accountName,result.success,row.run_at)]);
 
     log(`account ${accountId}: auto reset ${result.success ? 'SUCCESS' : 'GAVE UP'}`);
   } catch (err) {
@@ -96,6 +97,7 @@ async function processSchedule(row: AutoResetRow): Promise<void> {
     });
     db.prepare(`UPDATE auto_reset_schedule SET status = 'failed' WHERE account_id = ?`).run(accountId);
     markReset(accountId,false,err instanceof Error ? err.message : 'Unknown error');
+    await Promise.allSettled([sendAdminResetResult(accountName,false),sendResetResultPush(accountId,accountName,false,row.run_at)]);
   } finally {
     running.delete(accountId);
   }
