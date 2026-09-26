@@ -63,3 +63,7 @@ export function sendApprovalPush(order:TestOrder):Promise<number>{
 export function sendBookingEndPush(order:TestOrder):Promise<number>{
  return sendPush({title:'Booking time ended',body:`${order.username} · ${order.id} · password reset is starting`,url:'/?tab=accounts',tag:`end-${order.id}`});
 }
+
+export function sendResetResultPush(accountId:string,accountName:string,success:boolean,runAt:string):Promise<number>{
+ return sendPush({title:success?'Reset completed':'Reset failed',body:success?`${accountName}: password reset completed successfully. Account is available.`:`${accountName}: password reset failed. Account remains booked; check Accounts and History.`,url:'/?tab=accounts',tag:`reset-result-${accountId}-${runAt}`});
+}
