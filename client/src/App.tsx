@@ -297,8 +297,8 @@ function AutoResetPicker({
 
 function Dashboard({ token, onLogout }: { token: string; onLogout: () => void }) {
   const requestedTab=new URLSearchParams(window.location.search).get('tab');
-  type Tab = 'overview' | 'accounts' | 'approvals' | 'manual' | 'finance' | 'history' | 'settings';
-  const [activeTab, setActiveTab] = useState<Tab>(()=>['overview','accounts','approvals','manual','finance','history','settings'].includes(String(requestedTab))?requestedTab as Tab:'overview');
+  type Tab = 'overview' | 'accounts' | 'manual' | 'finance' | 'history' | 'settings';
+  const [activeTab, setActiveTab] = useState<Tab>(()=>requestedTab==='approvals'?'history':['overview','accounts','manual','finance','history','settings'].includes(String(requestedTab))?requestedTab as Tab:'overview');
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -550,8 +550,8 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
         </div>
         <div className="max-w-3xl mx-auto px-4 sm:px-5 pb-3">
           <nav className="admin-tabs" aria-label="Dashboard sections">
-            {([['overview','Home','home'],['approvals','Bookings','bookings'],['accounts','Accounts','accounts'],['finance','Reports','reports'],['settings','More','more']] as const).map(([id,label,icon]) => (
-              <button key={id} onClick={() => setActiveTab(id)} aria-current={(id === 'approvals' ? ['approvals','manual','history'].includes(activeTab) : activeTab === id) ? 'page' : undefined} className={(id === 'approvals' ? ['approvals','manual','history'].includes(activeTab) : activeTab === id) ? 'active' : ''}><Icon path={ICONS[icon]} className="w-5 h-5" /><span>{label}</span></button>
+            {([['overview','Home','home'],['history','Bookings','bookings'],['accounts','Accounts','accounts'],['finance','Reports','reports'],['settings','More','more']] as const).map(([id,label,icon]) => (
+              <button key={id} onClick={() => setActiveTab(id)} aria-current={(id === 'history' ? ['manual','history'].includes(activeTab) : activeTab === id) ? 'page' : undefined} className={(id === 'history' ? ['manual','history'].includes(activeTab) : activeTab === id) ? 'active' : ''}><Icon path={ICONS[icon]} className="w-5 h-5" /><span>{label}</span></button>
             ))}
           </nav>
         </div>
@@ -559,7 +559,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
 
       <main className="v3-main max-w-3xl mx-auto px-4 sm:px-5 py-6">
         {pushMessage&&<div className={`mb-4 rounded-xl border px-3.5 py-2.5 text-sm ${pushState==='on'?'border-emerald-200 bg-emerald-50 text-emerald-700':'border-amber-200 bg-amber-50 text-amber-800'}`}>{pushMessage}</div>}
-        {(['approvals','manual','history'] as const).includes(activeTab as 'approvals'|'manual'|'history') && <nav className="v3-booking-tabs" aria-label="Booking tools">{([['approvals','Requests'],['manual','Manual booking'],['history','History']] as const).map(([id,label])=><button key={id} onClick={()=>setActiveTab(id)} className={activeTab===id?'active':''} aria-current={activeTab===id?'page':undefined}>{label}</button>)}</nav>}
+        {(['manual','history'] as const).includes(activeTab as 'manual'|'history') && <nav className="v3-booking-tabs" aria-label="Booking tools">{([['history','History'],['manual','Manual booking']] as const).map(([id,label])=><button key={id} onClick={()=>setActiveTab(id)} className={activeTab===id?'active':''} aria-current={activeTab===id?'page':undefined}>{label}</button>)}</nav>}
         {activeTab === 'overview' ? <OverviewPanel token={token} accounts={accounts} onNavigate={setActiveTab} /> : activeTab === 'settings' ? (
           <>
             <PaymentSettingsPanel token={token} />
@@ -841,13 +841,12 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
 
         </div>
 
-        {activeTab === 'approvals' && <OrdersPanel token={token} view="approvals" onBookingChanged={load} />}
         {activeTab === 'manual' && <OrdersPanel token={token} view="manual" onBookingChanged={load} />}
         {activeTab === 'finance' && <OrdersPanel token={token} view="finance" />}
 
         {/* ─── Reset History ─────────────────────────────────── */}
         {activeTab === 'history' && <>
-        <OrdersPanel token={token} view="history" />
+        <OrdersPanel token={token} view="history" onBookingChanged={load} />
         <div className="mt-9">
           <div className="flex items-center gap-2 mb-1">
             <Icon path={ICONS.history} className="w-5 h-5 text-slate-500" />

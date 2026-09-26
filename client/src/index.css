@@ -49,6 +49,7 @@ body {
 .v3-booking-tabs button{flex:1;min-width:0;min-height:40px;padding:7px 9px;border-radius:999px;font-size:12px;font-weight:650;color:#526471;white-space:nowrap}
 .v3-booking-tabs button.active{background:#dff4ec;color:#114b40;box-shadow:0 2px 10px #145a4120}
 @media(max-width:640px){.v3-shell .admin-tabs{width:100%;max-width:560px;margin:auto}.v3-shell .v3-header>div:last-child{overflow:visible;padding-left:10px;padding-right:10px}.v3-shell .admin-tabs button{min-height:54px;padding:6px 2px;font-size:10px}.v3-booking-tabs button{font-size:11px;padding-inline:5px}}
+.v3-metric:nth-child(3) strong{font-size:clamp(22px,4vw,31px);overflow-wrap:anywhere}
 
 .qr-actions{display:flex;justify-content:center;align-items:center;gap:12px;margin:-6px auto 16px;color:#8f98a7;font-size:12px}.qr-actions a{color:#ff75aa;text-decoration:underline;font-weight:700}
 

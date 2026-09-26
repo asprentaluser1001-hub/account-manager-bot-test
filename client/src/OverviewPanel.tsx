@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 
 type AccountSummary = { sold: boolean };
 type Order = { id: string; username: string; status: string; expires_at: string | null; created_at: string; account_id: string | null };
-type Overview = { orders: Order[]; summary: { available: number; pending: { n: number } } };
-type Destination = 'overview' | 'accounts' | 'approvals' | 'manual' | 'finance' | 'history' | 'settings';
+type Overview = { orders: Order[]; summary: { available: number; revenue: number } };
+type Destination = 'overview' | 'accounts' | 'manual' | 'finance' | 'history' | 'settings';
 
 function indiaDay(date: Date) {
   const parts = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date);
@@ -29,7 +29,6 @@ export default function OverviewPanel({ token, accounts, onNavigate }: { token: 
   const orders = useMemo(() => data?.orders || [], [data]);
   const active = orders.filter(order => ['approved', 'delivered'].includes(order.status) && order.expires_at && new Date(order.expires_at).getTime() > now);
   const expiring = active.filter(order => new Date(order.expires_at!).getTime() - now <= 24 * 60 * 60 * 1000);
-  const pending = orders.filter(order => ['awaiting_payment_claim', 'payment_claimed'].includes(order.status));
   const days = Array.from({ length: 7 }, (_, index) => {
     const date = new Date(now - (6 - index) * 86400000);
     const key = indiaDay(date);
@@ -43,7 +42,7 @@ export default function OverviewPanel({ token, accounts, onNavigate }: { token: 
     <div className="v3-metrics">
       <button onClick={() => onNavigate('history')} className="v3-glass v3-metric"><span className="v3-metric-icon">◷</span><span>Active bookings<strong>{active.length.toString().padStart(2, '0')}</strong></span><span aria-hidden="true">›</span></button>
       <button onClick={() => onNavigate('accounts')} className="v3-glass v3-metric"><span className="v3-metric-icon">◎</span><span>Available accounts<strong>{(accounts.length ? accounts.filter(a => !a.sold).length : data?.summary.available || 0).toString().padStart(2, '0')}</strong></span><span aria-hidden="true">›</span></button>
-      <button onClick={() => onNavigate('approvals')} className="v3-glass v3-metric"><span className="v3-metric-icon">▤</span><span>Payments pending<strong>{pending.length.toString().padStart(2, '0')}</strong></span><span aria-hidden="true">›</span></button>
+      <button onClick={() => onNavigate('finance')} className="v3-glass v3-metric" title="Confirmed test-booking earnings since 26 Sep 2026"><span className="v3-metric-icon">₹</span><span>Total earnings<strong>₹{(data?.summary.revenue || 0).toLocaleString('en-IN')}</strong></span><span aria-hidden="true">›</span></button>
       <button onClick={() => onNavigate('history')} className="v3-glass v3-metric"><span className="v3-metric-icon">◴</span><span>Expiring soon<strong>{expiring.length.toString().padStart(2, '0')}</strong></span><span aria-hidden="true">›</span></button>
     </div>
     <section className="v3-glass v3-overview-card" aria-label="Weekly bookings"><div className="v3-section-head"><h3>Weekly bookings</h3><span>Last 7 days</span></div><div className="v3-chart">{days.map(day => <div className="v3-chart-day" key={day.key}><span>{day.count}</span><div className="v3-chart-track"><i style={{ height: `${Math.max(day.count ? day.count / max * 100 : 3, 3)}%` }} /></div><small>{day.label}</small></div>)}</div></section>
