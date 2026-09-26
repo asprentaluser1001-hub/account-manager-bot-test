@@ -24,8 +24,7 @@ checkoutRouter.get('/config',(_req,res)=>res.json(clientConfig()));
 checkoutRouter.post('/orders',json({limit:'32kb'}),async(req,res)=>{
  try{
   if(limited(req))return res.status(429).json({error:'Too many attempts. Please wait and try again.'});
-  if(isImbConfigured()&&!/^[6-9]\d{9}$/.test(String(req.body.contact||'').replace(/\D/g,'').slice(-10)))return res.status(400).json({error:'Enter a valid 10-digit Indian mobile number for IMB payment.'});
-  const result=createWebOrder(String(req.body.name||''),String(req.body.contact||''),Number(req.body.hours));
+  const result=createWebOrder(String(req.body.name||''),'',Number(req.body.hours));
   if(isImbConfigured()){
    try{
     const base=process.env.PUBLIC_CHECKOUT_URL||`${req.protocol}://${req.get('host')}/checkout`;
