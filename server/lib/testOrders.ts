@@ -25,6 +25,8 @@ for (const [name, definition] of [
  ['gateway_paytm_link','TEXT'],
  ['gateway_bhim_link','TEXT'],
  ['gateway_check_link','TEXT'],
+ ['order_type', "TEXT NOT NULL DEFAULT 'booking'"],
+ ['parent_order_id', 'TEXT'],
 ] as const) {
  const columns=db.prepare('PRAGMA table_info(test_orders)').all() as Array<{name:string}>;
  if(!columns.some(column=>column.name===name))db.exec(`ALTER TABLE test_orders ADD COLUMN ${name} ${definition}`);
@@ -63,6 +65,24 @@ export function createManualBooking(name:string,contact:string,hours:number,amou
   if(!sold.changes)throw new Error('Account is already in use');
   db.prepare("INSERT INTO auto_reset_schedule(account_id,run_at,status,created_at) VALUES (?,?,'pending',?) ON CONFLICT(account_id) DO UPDATE SET run_at=excluded.run_at,status='pending',created_at=excluded.created_at").run(accountId,ends,now.toISOString());
   db.prepare("INSERT INTO test_orders(id,chat_id,username,hours,amount,status,account_id,created_at,approved_at,expires_at,source,customer_contact) VALUES (?,?,?,?,?,'delivered',?,?,?,?, 'manual',?)").run(id,'manual',name,hours,amount,accountId,now.toISOString(),now.toISOString(),ends,contact||null);
+  return getOrder(id)!;
+ })();
+}
+export function activeAccounts():Array<{id:string;name:string;soldUntil:string}>{
+ return db.prepare("SELECT id,name,sold_until AS soldUntil FROM accounts WHERE sold=1 AND sold_until IS NOT NULL AND sold_until > ? ORDER BY sold_until ASC").all(new Date().toISOString()) as Array<{id:string;name:string;soldUntil:string}>;
+}
+export function createManualExtension(name:string,contact:string,amount:number,accountId:string):TestOrder {
+ name=name.trim();contact=contact.trim();
+ if(name.length<2||name.length>64||contact.length>100||amount!==50)throw new Error('Enter a valid customer and the fixed extension amount of ₹50');
+ const id='MAN-EXT-'+randomUUID().slice(0,8).toUpperCase(),now=new Date();
+ return db.transaction(()=>{
+  const account=db.prepare('SELECT id,sold,sold_until FROM accounts WHERE id=?').get(accountId) as {id:string;sold:number;sold_until:string|null}|undefined;
+  if(!account||!account.sold||!account.sold_until||new Date(account.sold_until).getTime()<=Date.now())throw new Error('Select an active booking to extend');
+  const parent=db.prepare("SELECT id FROM test_orders WHERE account_id=? AND status IN ('approved','delivered','delivery_failed') ORDER BY expires_at DESC LIMIT 1").get(accountId) as {id:string}|undefined;
+  const newExpiry=new Date(new Date(account.sold_until).getTime()+50*60*1000).toISOString(),created=now.toISOString();
+  db.prepare('UPDATE accounts SET sold=1,sold_until=? WHERE id=? AND sold=1').run(newExpiry,accountId);
+  db.prepare("INSERT INTO auto_reset_schedule(account_id,run_at,status,created_at) VALUES (?,?,'pending',?) ON CONFLICT(account_id) DO UPDATE SET run_at=excluded.run_at,status='pending',created_at=excluded.created_at").run(accountId,newExpiry,created);
+  db.prepare("INSERT INTO test_orders(id,chat_id,username,hours,amount,status,account_id,created_at,approved_at,expires_at,source,customer_contact,order_type,parent_order_id) VALUES (?,?,?,?,?,'delivered',?,?,?,?, 'manual',?,?, 'extension',?)").run(id,'manual',name,1,50,accountId,created,created,newExpiry,contact||null,parent?.id||null);
   return getOrder(id)!;
  })();
 }
