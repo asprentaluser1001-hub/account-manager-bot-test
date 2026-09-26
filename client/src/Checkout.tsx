@@ -13,7 +13,7 @@ function linkedOrder():SavedOrder|null{
 }
 
 export default function Checkout(){
- const [config,setConfig]=useState<Config|null>(null),[selected,setSelected]=useState<number>(()=>{const value=Number(new URLSearchParams(window.location.search).get('hours'));return [1,2,3,168,720].includes(value)?value:1}),[name,setName]=useState(''),[contact,setContact]=useState('');
+ const [config,setConfig]=useState<Config|null>(null),[selected,setSelected]=useState<number>(()=>{const value=Number(new URLSearchParams(window.location.search).get('hours'));return [1,2,3,168,720].includes(value)?value:1}),[name,setName]=useState('');
  const [saved,setSaved]=useState<SavedOrder|null>(()=>{const linked=linkedOrder();if(linked)return linked;try{return JSON.parse(sessionStorage.getItem(ORDER_KEY)||'null')}catch{return null}});
  const [order,setOrder]=useState<OrderStatus|null>(null),[reference,setReference]=useState(''),[proof,setProof]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[copied,setCopied]=useState('');
  useEffect(()=>{fetch('/api/checkout/config').then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.error);setConfig(d);if(d.plans?.length&&!d.plans.some((p:Plan)=>p.hours===selected))setSelected(d.plans[0].hours)}).catch(()=>setError('Checkout is temporarily unavailable. Please try again.'))},[]);
@@ -31,7 +31,7 @@ export default function Checkout(){
   {name:'Paytm',icon:'/payment-icons/paytm.svg',className:'paytm',href:`paytmmp://pay?${upiQuery}`},
   {name:'Any UPI app',icon:'/payment-icons/upi.svg',className:'upi',href:`upi://pay?${upiQuery}`},
  ]:[];
- async function createOrder(e:React.FormEvent){e.preventDefault();setBusy(true);setError('');try{const r=await fetch('/api/checkout/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,contact,hours:selected})});const d=await r.json();if(!r.ok)throw new Error(d.error);const next={orderId:d.orderId,accessToken:d.accessToken,amount:d.amount,hours:selected};sessionStorage.setItem(ORDER_KEY,JSON.stringify(next));setSaved(next);if(d.payment_url)window.location.assign(d.payment_url)}catch(e){setError(e instanceof Error?e.message:'Could not create order')}finally{setBusy(false)}}
+ async function createOrder(e:React.FormEvent){e.preventDefault();setBusy(true);setError('');try{const r=await fetch('/api/checkout/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,hours:selected})});const d=await r.json();if(!r.ok)throw new Error(d.error);const next={orderId:d.orderId,accessToken:d.accessToken,amount:d.amount,hours:selected};sessionStorage.setItem(ORDER_KEY,JSON.stringify(next));setSaved(next);if(d.payment_url)window.location.assign(d.payment_url)}catch(e){setError(e instanceof Error?e.message:'Could not create order')}finally{setBusy(false)}}
  async function chooseProof(file:File){
   if(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>3*1024*1024){setError('Upload a PNG, JPEG or WebP screenshot under 3 MB.');return;}
   const data=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(new Error('Could not read screenshot'));reader.readAsDataURL(file)});setProof(data);setError('');
@@ -53,7 +53,6 @@ export default function Checkout(){
     <div className="plan-grid">{config.plans.map(item=><button key={item.hours} onClick={()=>setSelected(item.hours)} className={`plan-card ${selected===item.hours?'selected':''}`}><span>{duration(item.hours)}</span><strong>₹{item.amount}</strong>{selected===item.hours&&<em>Selected</em>}</button>)}</div>
     <form onSubmit={createOrder} className="checkout-card checkout-form">
      <div><label>Your name</label><input value={name} onChange={e=>setName(e.target.value)} placeholder="Name" required minLength={2} maxLength={64}/></div>
-     <div><label>{config.gatewayEnabled?'Mobile number for payment':'Telegram username or phone'}</label><input type={config.gatewayEnabled?'tel':'text'} value={contact} onChange={e=>setContact(e.target.value)} placeholder={config.gatewayEnabled?'10-digit mobile number':'@username or mobile number'} required minLength={config.gatewayEnabled?10:4} maxLength={config.gatewayEnabled?15:100} pattern={config.gatewayEnabled?'[0-9+() -]{10,15}':undefined}/></div>
      <div className="order-total"><span>{plan?duration(plan.hours):''}</span><strong>₹{plan?.amount}</strong></div>
      <button className="checkout-primary" disabled={busy||!config.available||(!config.gatewayEnabled&&!config.upiId)}>{busy?'Creating order…':config.gatewayEnabled?'Continue to IMB secure payment':'Continue to payment'}</button>
      {!config.gatewayEnabled&&!config.upiId&&<p className="checkout-note">Online payment is being configured. Please contact support.</p>}
