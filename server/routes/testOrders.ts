@@ -1,12 +1,16 @@
 import {Router,Request,Response} from 'express';
 import {adminAuth} from '../auth';
-import {approveOrder,availableAccounts,claimPayment,createManualBooking,createOrder,finance,getOrder,markDelivered,markDeliveryFailed,recentOrders,rejectOrder,summary} from '../lib/testOrders';
+import {activeAccounts,approveOrder,availableAccounts,claimPayment,createManualBooking,createManualExtension,createOrder,finance,getOrder,markDelivered,markDeliveryFailed,recentOrders,rejectOrder,summary} from '../lib/testOrders';
 import {sendAdminClaim,sendCustomerDelivery} from '../lib/telegramBot';
 export const testOrdersRouter=Router();testOrdersRouter.use(adminAuth);
 const fail=(res:Response,e:unknown)=>res.status(400).json({error:e instanceof Error?e.message:'Request failed'});
-testOrdersRouter.get('/',(_req,res)=>res.json({orders:recentOrders(),summary:summary(),finance:finance(),available:availableAccounts()}));
+testOrdersRouter.get('/',(_req,res)=>res.json({orders:recentOrders(),summary:summary(),finance:finance(),available:availableAccounts(),active:activeAccounts()}));
 testOrdersRouter.post('/manual',(req,res)=>{try{
  const order=createManualBooking(String(req.body.name||''),String(req.body.contact||''),Number(req.body.hours),Number(req.body.amount),String(req.body.accountId||''));
+ res.status(201).json({order});
+}catch(e){fail(res,e)}});
+testOrdersRouter.post('/manual-extension',(req,res)=>{try{
+ const order=createManualExtension(String(req.body.name||''),String(req.body.contact||''),Number(req.body.amount),String(req.body.accountId||''));
  res.status(201).json({order});
 }catch(e){fail(res,e)}});
 // These create/claim routes are ADMIN-ONLY sandbox controls; no public payment or webhook.
