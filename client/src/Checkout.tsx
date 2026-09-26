@@ -13,7 +13,7 @@ function linkedOrder():SavedOrder|null{
 }
 
 export default function Checkout(){
- const [config,setConfig]=useState<Config|null>(null),[selected,setSelected]=useState<number>(()=>{const value=Number(new URLSearchParams(window.location.search).get('hours'));return [1,2,3,168,720].includes(value)?value:1}),[name,setName]=useState('');
+ const [config,setConfig]=useState<Config|null>(null),[lockedHours]=useState<number|null>(()=>{const query=new URLSearchParams(window.location.search);const value=Number(query.get('hours'));return query.get('new')==='1'&&[1,2,3,168,720].includes(value)?value:null}),[selected,setSelected]=useState<number>(()=>{const value=Number(new URLSearchParams(window.location.search).get('hours'));return [1,2,3,168,720].includes(value)?value:1}),[name,setName]=useState('');
  const [saved,setSaved]=useState<SavedOrder|null>(()=>{const linked=linkedOrder();if(linked)return linked;if(new URLSearchParams(window.location.search).get('new')==='1')return null;try{return JSON.parse(sessionStorage.getItem(ORDER_KEY)||'null')}catch{return null}});
  const [order,setOrder]=useState<OrderStatus|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[copied,setCopied]=useState('');
  useEffect(()=>{fetch('/api/checkout/config').then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.error);setConfig(d);if(d.plans?.length&&!d.plans.some((p:Plan)=>p.hours===selected))setSelected(d.plans[0].hours)}).catch(()=>setError('Checkout is temporarily unavailable. Please try again.'))},[]);
@@ -34,7 +34,7 @@ export default function Checkout(){
    {error&&<div className="checkout-alert error" role="alert">{error}</div>}
    {!saved&&<>
     <div className={`availability ${config.available?'available':'unavailable'}`}><span></span>{config.available?'Access is available now':'Currently unavailable'}</div>
-    <div className="plan-grid">{config.plans.map(item=><button key={item.hours} onClick={()=>setSelected(item.hours)} className={`plan-card ${selected===item.hours?'selected':''}`}><span>{duration(item.hours)}</span><strong>₹{item.amount}</strong>{selected===item.hours&&<em>Selected</em>}</button>)}</div>
+    <div className="plan-grid">{config.plans.filter(item=>!lockedHours||item.hours===lockedHours).map(item=><button key={item.hours} onClick={()=>{if(!lockedHours)setSelected(item.hours)}} className={`plan-card ${selected===item.hours?'selected':''}`}><span>{duration(item.hours)}</span><strong>₹{item.amount}</strong>{selected===item.hours&&<em>Selected</em>}</button>)}</div>
     <form onSubmit={createOrder} className="checkout-card checkout-form">
      <div><label>Your name</label><input value={name} onChange={e=>setName(e.target.value)} placeholder="Name" required minLength={2} maxLength={64}/></div>
      <div className="order-total"><span>{plan?duration(plan.hours):''}</span><strong>₹{plan?.amount}</strong></div>
