@@ -352,7 +352,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
     }
   }, [authHeaders, onLogout]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => { load(); }, [load, activeTab]);
 
   useEffect(()=>{
     if(!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window)){setPushState('unsupported');return;}
@@ -834,8 +834,8 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
 
         </div>
 
-        {activeTab === 'approvals' && <OrdersPanel token={token} view="approvals" />}
-        {activeTab === 'manual' && <OrdersPanel token={token} view="manual" />}
+        {activeTab === 'approvals' && <OrdersPanel token={token} view="approvals" onBookingChanged={load} />}
+        {activeTab === 'manual' && <OrdersPanel token={token} view="manual" onBookingChanged={load} />}
         {activeTab === 'finance' && <OrdersPanel token={token} view="finance" />}
 
         {/* ─── Reset History ─────────────────────────────────── */}

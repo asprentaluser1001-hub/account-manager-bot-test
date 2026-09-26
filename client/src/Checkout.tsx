@@ -30,7 +30,7 @@ export default function Checkout(){
  return <div className="checkout-shell">
   <header className="checkout-header"><a href="/checkout" className="checkout-brand"><span>FR</span>{config.brand}</a><div className="checkout-secure">Secure order</div></header>
   <main className="checkout-main">
-   <section className="checkout-intro"><p className="checkout-kicker">PRIVATE ACCESS</p><h1>Choose your access time</h1><p>Pick a plan, pay the exact amount by UPI, and receive access after payment approval.</p></section>
+   <section className="checkout-intro"><p className="checkout-kicker">PRIVATE ACCESS</p><h1>Choose your access time</h1><p>Pick a plan, scan the IMB payment QR, and receive access after payment verification.</p></section>
    {error&&<div className="checkout-alert error" role="alert">{error}</div>}
    {!saved&&<>
     <div className={`availability ${config.available?'available':'unavailable'}`}><span></span>{config.available?'Access is available now':'Currently unavailable'}</div>
@@ -46,7 +46,7 @@ export default function Checkout(){
     <div className="order-id"><span>Order</span><strong>{saved.orderId}</strong></div>
     <div className="amount-due"><span>Pay exactly</span><strong>₹{saved.amount}</strong></div>
     {!order&&<p className="checkout-note">Loading payment details…</p>}
-    {order?.payment_url?<><p className="checkout-note"><strong>Payment method: IMB</strong></p><a className="checkout-primary block text-center" href={order.payment_url}>Open secure IMB payment</a><p className="checkout-note">Choose Google Pay, Paytm or another available method on the IMB payment page. Return here after paying to check your booking.</p></>:order&&<p className="checkout-note">This order has no IMB payment link. If you have already paid, contact support with this order ID. Otherwise, start a new booking to pay through IMB.</p>}
+    {order?.payment_url?<><p className="checkout-note"><strong>Payment method: IMB</strong></p><a className="checkout-primary block text-center" href={order.payment_url}>Open secure IMB payment</a><p className="checkout-note">Scan the QR code on the IMB payment page to pay. Return here after paying to check your booking.</p></>:order&&<p className="checkout-note">This order has no IMB payment link. If you have already paid, contact support with this order ID. Otherwise, start a new booking to pay through IMB.</p>}
     <button className="checkout-link" onClick={startOver}>Start a new booking</button>
    </div>}
    {waiting&&<div className="checkout-card status-card"><div className="status-icon waiting">⌛</div><h2>Booking pending</h2><p>Your order <strong>{saved?.orderId}</strong> is awaiting account assignment or review. This page checks automatically.</p><div className="status-pulse"><span></span>Preparing your access</div></div>}
