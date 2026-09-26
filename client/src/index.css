@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* V3 preview safety banner; the rest of the V2 styling is intentionally unchanged. */
+#root::before{content:"FlingRoulette Developer Preview V3 — Test Data Only";display:block;background:#7c2d12;color:#ffedd5;text-align:center;font-size:12px;font-weight:800;letter-spacing:.02em;padding:8px 12px;line-height:1.35;}
+
 /* Light theme, matching the FlingBoss admin dashboard look. */
 body {
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
