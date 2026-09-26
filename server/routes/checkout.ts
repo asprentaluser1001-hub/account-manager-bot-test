@@ -54,13 +54,15 @@ async function confirmImbPayment(orderId:string){
  const checked=await checkImbOrder(orderId),result=checked.result;
  const verified=(checked.status==='COMPLETED'||checked.status===true)&&result?.status==='SUCCESS'&&result.txnStatus==='COMPLETED';
  if(!verified||result?.orderId!==orderId||Number(result.amount)!==order.amount)throw new Error('IMB has not confirmed this order and exact amount');
- if(!claimGatewayPayment(orderId,result.utr?String(result.utr):null))return {alreadyProcessed:true};
+ const newlyClaimed=claimGatewayPayment(orderId,result.utr?String(result.utr):null);
+ const current=getOrder(orderId)!;
+ if(!newlyClaimed&&current.status!=='payment_claimed')return {alreadyProcessed:true};
  for(const account of availableAccounts()){
   try{approveOrder(orderId,account.id);markDelivered(orderId);return {alreadyProcessed:false,delivered:true};}
   catch(error){if(!(error instanceof Error)||!['Account is unavailable','Account is already in use','No IDs are available'].includes(error.message))throw error;}
  }
- const [adminAlerted,pushAlerts]=await Promise.all([sendAdminClaim(getOrder(orderId)!),sendApprovalPush(getOrder(orderId)!)]);
- return {alreadyProcessed:false,delivered:false,adminAlerted,pushAlerts};
+ if(newlyClaimed){const currentOrder=getOrder(orderId)!;await Promise.all([sendAdminClaim(currentOrder),sendApprovalPush(currentOrder)]);}
+ return {alreadyProcessed:false,delivered:false};
 }
 
 checkoutRouter.post('/imb/webhook',json({limit:'64kb'}),urlencoded({extended:true,limit:'64kb'}),async(req,res)=>{
