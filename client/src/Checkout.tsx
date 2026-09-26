@@ -1,7 +1,7 @@
 import {useEffect,useMemo,useState} from 'react';
 
 type Plan={hours:number;amount:number};
-type Config={brand:string;payeeName:string;upiId:string;qrDataUrl:string;support:string;plans:Plan[];available:boolean;gatewayEnabled:boolean};
+type Config={brand:string;support:string;plans:Plan[];available:boolean;gatewayEnabled:boolean};
 type SavedOrder={orderId:string;accessToken:string;amount:number;hours:number};
 type OrderStatus={id:string;username:string;hours:number;amount:number;status:string;created_at:string;claimed_at:string|null;approved_at:string|null;expires_at:string|null;error:string|null;payment_url?:string;phonepe_link?:string;paytm_link?:string;bhim_link?:string;credentials:null|{email:string;password:string}};
 
@@ -15,29 +15,13 @@ function linkedOrder():SavedOrder|null{
 export default function Checkout(){
  const [config,setConfig]=useState<Config|null>(null),[selected,setSelected]=useState<number>(()=>{const value=Number(new URLSearchParams(window.location.search).get('hours'));return [1,2,3,168,720].includes(value)?value:1}),[name,setName]=useState('');
  const [saved,setSaved]=useState<SavedOrder|null>(()=>{const linked=linkedOrder();if(linked)return linked;try{return JSON.parse(sessionStorage.getItem(ORDER_KEY)||'null')}catch{return null}});
- const [order,setOrder]=useState<OrderStatus|null>(null),[reference,setReference]=useState(''),[proof,setProof]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState(''),[copied,setCopied]=useState('');
+ const [order,setOrder]=useState<OrderStatus|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[copied,setCopied]=useState('');
  useEffect(()=>{fetch('/api/checkout/config').then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.error);setConfig(d);if(d.plans?.length&&!d.plans.some((p:Plan)=>p.hours===selected))setSelected(d.plans[0].hours)}).catch(()=>setError('Checkout is temporarily unavailable. Please try again.'))},[]);
  useEffect(()=>{const linked=linkedOrder();if(linked){sessionStorage.setItem(ORDER_KEY,JSON.stringify(linked));window.history.replaceState({},'',window.location.pathname)}},[]);
  useEffect(()=>{if(!saved)return;let active=true;const load=async()=>{try{const r=await fetch(`/api/checkout/orders/${saved.orderId}?token=${encodeURIComponent(saved.accessToken)}`);const d=await r.json();if(!r.ok)throw new Error(d.error);if(active)setOrder(d)}catch(e){if(active)setError(e instanceof Error?e.message:'Could not check order')}};load();const timer=setInterval(load,8000);return()=>{active=false;clearInterval(timer)}},[saved]);
  const plan=useMemo(()=>config?.plans.find(p=>p.hours===selected),[config,selected]);
- const upiQuery=saved&&config?.upiId?`pa=${encodeURIComponent(config.upiId)}&pn=${encodeURIComponent(config.payeeName||config.brand)}&am=${saved.amount.toFixed(2)}&cu=INR&tn=${encodeURIComponent(saved.orderId)}`:'';
- const paymentApps=config?.gatewayEnabled&&order?.phonepe_link?[
-  {name:'PhonePe',icon:'/payment-icons/phonepe.svg',className:'phonepe',href:order.phonepe_link},
-  ...(order.paytm_link?[{name:'Paytm',icon:'/payment-icons/paytm.svg',className:'paytm',href:order.paytm_link}]:[]),
-  ...(order.bhim_link?[{name:'Any UPI app',icon:'/payment-icons/upi.svg',className:'upi',href:order.bhim_link}]:[]),
- ]:upiQuery?[
-  {name:'Google Pay',icon:'/payment-icons/google-pay.svg',className:'google-pay',href:`tez://upi/pay?${upiQuery}`},
-  {name:'PhonePe',icon:'/payment-icons/phonepe.svg',className:'phonepe',href:`phonepe://pay?${upiQuery}`},
-  {name:'Paytm',icon:'/payment-icons/paytm.svg',className:'paytm',href:`paytmmp://pay?${upiQuery}`},
-  {name:'Any UPI app',icon:'/payment-icons/upi.svg',className:'upi',href:`upi://pay?${upiQuery}`},
- ]:[];
- async function createOrder(e:React.FormEvent){e.preventDefault();setBusy(true);setError('');try{const r=await fetch('/api/checkout/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,hours:selected})});const d=await r.json();if(!r.ok)throw new Error(d.error);const next={orderId:d.orderId,accessToken:d.accessToken,amount:d.amount,hours:selected};sessionStorage.setItem(ORDER_KEY,JSON.stringify(next));setSaved(next);if(d.payment_url)window.location.assign(d.payment_url)}catch(e){setError(e instanceof Error?e.message:'Could not create order')}finally{setBusy(false)}}
- async function chooseProof(file:File){
-  if(!['image/png','image/jpeg','image/webp'].includes(file.type)||file.size>3*1024*1024){setError('Upload a PNG, JPEG or WebP screenshot under 3 MB.');return;}
-  const data=await new Promise<string>((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result));reader.onerror=()=>reject(new Error('Could not read screenshot'));reader.readAsDataURL(file)});setProof(data);setError('');
- }
- async function submitProof(e:React.FormEvent){e.preventDefault();if(!saved||!proof)return;setBusy(true);setError('');try{const r=await fetch(`/api/checkout/orders/${saved.orderId}/proof`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({accessToken:saved.accessToken,paymentReference:reference,proofDataUrl:proof})});const d=await r.json();if(!r.ok)throw new Error(d.error);setOrder(prev=>prev?{...prev,status:d.status}:prev);setProof('')}catch(e){setError(e instanceof Error?e.message:'Could not submit payment proof')}finally{setBusy(false)}}
- function startOver(){sessionStorage.removeItem(ORDER_KEY);setSaved(null);setOrder(null);setProof('');setReference('');setError('')}
+ async function createOrder(e:React.FormEvent){e.preventDefault();setBusy(true);setError('');try{const r=await fetch('/api/checkout/orders',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,hours:selected})});const d=await r.json();if(!r.ok)throw new Error(d.error);if(!d.payment_url)throw new Error('IMB did not return a payment link. Please contact support.');const next={orderId:d.orderId,accessToken:d.accessToken,amount:d.amount,hours:selected};sessionStorage.setItem(ORDER_KEY,JSON.stringify(next));setSaved(next);if(d.payment_url)window.location.assign(d.payment_url)}catch(e){setError(e instanceof Error?e.message:'Could not create order')}finally{setBusy(false)}}
+ function startOver(){sessionStorage.removeItem(ORDER_KEY);setSaved(null);setOrder(null);setError('')}
  async function copy(value:string,key:string){await navigator.clipboard.writeText(value);setCopied(key);setTimeout(()=>setCopied(''),1200)}
  if(!config)return <div className="checkout-shell"><div className="checkout-card text-center"><p className="checkout-muted">{error||'Opening secure checkout…'}</p></div></div>;
  const waiting=order?.status==='payment_claimed';
@@ -54,29 +38,21 @@ export default function Checkout(){
     <form onSubmit={createOrder} className="checkout-card checkout-form">
      <div><label>Your name</label><input value={name} onChange={e=>setName(e.target.value)} placeholder="Name" required minLength={2} maxLength={64}/></div>
      <div className="order-total"><span>{plan?duration(plan.hours):''}</span><strong>₹{plan?.amount}</strong></div>
-     <button className="checkout-primary" disabled={busy||!config.available||(!config.gatewayEnabled&&!config.upiId)}>{busy?'Creating order…':config.gatewayEnabled?'Continue to IMB secure payment':'Continue to payment'}</button>
-     {!config.gatewayEnabled&&!config.upiId&&<p className="checkout-note">Online payment is being configured. Please contact support.</p>}
+     <button className="checkout-primary" disabled={busy||!config.available||!config.gatewayEnabled}>{busy?'Creating order…':'Continue to IMB secure payment'}</button>
+     {!config.gatewayEnabled&&<p className="checkout-note">IMB payment is temporarily unavailable. Please contact support.</p>}
     </form>
    </>}
    {saved&&!waiting&&!approved&&!rejected&&<div className="checkout-card payment-card">
     <div className="order-id"><span>Order</span><strong>{saved.orderId}</strong></div>
     <div className="amount-due"><span>Pay exactly</span><strong>₹{saved.amount}</strong></div>
-    {!config.gatewayEnabled&&config.qrDataUrl&&<><img className="payment-qr" src={config.qrDataUrl} alt={`UPI QR for ${config.payeeName||config.brand}`}/><div className="qr-actions"><span>Scan with another phone</span><a href={config.qrDataUrl} download="flingroulette-payment-qr.png">Download QR</a></div></>}
-    {!config.gatewayEnabled&&<div className="upi-details"><span>UPI ID</span><strong>{config.upiId}</strong><button onClick={()=>copy(config.upiId,'upi')}>{copied==='upi'?'Copied':'Copy'}</button></div>}
-    {config.gatewayEnabled&&order?.payment_url&&<><a className="checkout-primary block text-center" href={order.payment_url}>Open secure IMB payment</a><p className="checkout-note">After payment, keep this page open. IMB will confirm it automatically.</p></>}
-    {!!paymentApps.length&&<div className="payment-apps"><p>Pay using</p><div className="payment-app-grid">{paymentApps.map(app=><a key={app.name} href={app.href} className={app.className} aria-label={`Pay with ${app.name}`}><span className="payment-app-icon"><img src={app.icon} alt=""/></span><strong>{app.name}</strong><span className="payment-app-arrow" aria-hidden="true">›</span></a>)}</div><small>Choose an app installed on this phone. If it does not open, download the QR and pay from your UPI app.</small></div>}
-    {!config.gatewayEnabled&&<p className="checkout-note">Confirm the payee name is <strong>{config.payeeName||config.brand}</strong>. Enter the exact amount shown above.</p>}
-    {!config.gatewayEnabled&&<form onSubmit={submitProof} className="proof-form">
-     <label>Payment screenshot</label><label className="upload-box">{proof?<><img src={proof} alt="Selected payment screenshot"/><span>Change screenshot</span></>:<><b>Upload payment screenshot</b><span>PNG, JPEG or WebP · maximum 3 MB</span></>}<input type="file" accept="image/png,image/jpeg,image/webp" onChange={e=>{const file=e.target.files?.[0];if(file)chooseProof(file)}}/></label>
-     <label>UPI reference number <small>(optional)</small></label><input value={reference} onChange={e=>setReference(e.target.value)} placeholder="12-digit UTR / transaction ID" maxLength={80}/>
-     <button className="checkout-primary" disabled={busy||!proof}>{busy?'Submitting…':'I have paid · Submit proof'}</button>
-    </form>}
-    <button className="checkout-link" onClick={startOver}>Cancel this order</button>
+    {!order&&<p className="checkout-note">Loading payment details…</p>}
+    {order?.payment_url?<><p className="checkout-note"><strong>Payment method: IMB</strong></p><a className="checkout-primary block text-center" href={order.payment_url}>Open secure IMB payment</a><p className="checkout-note">Choose Google Pay, Paytm or another available method on the IMB payment page. Return here after paying to check your booking.</p></>:order&&<p className="checkout-note">This order has no IMB payment link. If you have already paid, contact support with this order ID. Otherwise, start a new booking to pay through IMB.</p>}
+    <button className="checkout-link" onClick={startOver}>Start a new booking</button>
    </div>}
-   {waiting&&<div className="checkout-card status-card"><div className="status-icon waiting">⌛</div><h2>{config.gatewayEnabled?'Payment received':'Payment proof received'}</h2><p>Your order <strong>{saved?.orderId}</strong> is {config.gatewayEnabled?'verified and waiting for an available account. This page checks automatically.':'waiting for admin approval. This page checks automatically.'}</p><div className="status-pulse"><span></span>{config.gatewayEnabled?'Preparing your access':'Review in progress'}</div></div>}
+   {waiting&&<div className="checkout-card status-card"><div className="status-icon waiting">⌛</div><h2>Booking pending</h2><p>Your order <strong>{saved?.orderId}</strong> is awaiting account assignment or review. This page checks automatically.</p><div className="status-pulse"><span></span>Preparing your access</div></div>}
    {approved&&order?.credentials&&<div className="checkout-card status-card approved"><div className="status-icon">✓</div><h2>Access approved</h2><p>Your time ends on <strong>{order.expires_at?new Date(order.expires_at).toLocaleString():'the scheduled time'}</strong>.</p><div className="credential"><span>Login</span><strong>{order.credentials.email}</strong><button onClick={()=>copy(order.credentials!.email,'email')}>{copied==='email'?'Copied':'Copy'}</button></div><div className="credential"><span>Password</span><strong>{order.credentials.password}</strong><button onClick={()=>copy(order.credentials!.password,'password')}>{copied==='password'?'Copied':'Copy'}</button></div><p className="checkout-note">Keep this page private. Save your credentials before closing it.</p></div>}
    {rejected&&<div className="checkout-card status-card"><div className="status-icon rejected">×</div><h2>Payment could not be verified</h2><p>Please contact support with order <strong>{saved?.orderId}</strong>.</p>{config.support&&<a className="checkout-primary block" href={config.support.startsWith('http')?config.support:`https://t.me/${config.support.replace(/^@/,'')}`}>Contact support</a>}<button className="checkout-link" onClick={startOver}>Start a new order</button></div>}
   </main>
-  <footer className="checkout-footer">© {new Date().getFullYear()} {config.brand} · {config.gatewayEnabled?'Payments verified securely by IMB':'Payments are manually verified'}</footer>
+  <footer className="checkout-footer">© {new Date().getFullYear()} {config.brand} · Payments through IMB</footer>
  </div>
 }
