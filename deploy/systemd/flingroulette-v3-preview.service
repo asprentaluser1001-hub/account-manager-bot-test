@@ -1,0 +1,22 @@
+[Unit]
+Description=FlingRoulette V3 Developer Preview (test data only)
+After=network.target
+
+[Service]
+Type=simple
+User=flingroulette-v3
+Group=flingroulette-v3
+WorkingDirectory=/opt/flingroulette-v3/server
+EnvironmentFile=/opt/flingroulette-v3/server/.env.v3
+ExecStart=/usr/bin/node /opt/flingroulette-v3/server/dist/index.js
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/flingroulette-v3/server/data
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
