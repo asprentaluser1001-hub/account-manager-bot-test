@@ -31,7 +31,7 @@ function supportButton():{text:string;url?:string;callback_data?:string}{
  const username=setting('support_username');
  return username?{text:'Contact admin',url:`https://t.me/${username}`}:{text:'Contact admin',callback_data:'support'};
 }
-function menu(){return buttons([[{text:'Book now',callback_data:'book'}],[{text:'Check availability',callback_data:'availability'},supportButton()],[{text:'Rates & proofs',callback_data:'proofs'}],[{text:'My test bookings',callback_data:'history'}]]);}
+function menu(){return buttons([[{text:'Book now',callback_data:'book'}],[{text:'Check availability',callback_data:'availability'},supportButton()],[{text:'Rates & proofs',callback_data:'proofs'}]]);}
 const homeButton={text:'🏠 Home',callback_data:'home'};
 async function showAvailability(chatId:string,messageId?:number){
  const text=welcomeText();
@@ -126,10 +126,6 @@ export async function sendExpiryReminder(order:TestOrder){
  if(!token||order.source!=='telegram')return false;
  try{await say(order.chat_id,`Reminder: ${sandboxMode?'TEST ':''}booking ${order.id} is ending soon (${order.expires_at}). Contact the admin if you need more time.`);return true;}catch(e){console.error('[Bot] Expiry reminder failed',e);return false;}
 }
-async function showHistory(chatId:string){
- const orders=db.prepare("SELECT id,status,created_at,expires_at FROM test_orders WHERE chat_id=? AND source='telegram' ORDER BY created_at DESC LIMIT 10").all(chatId) as Array<{id:string;status:string;created_at:string;expires_at:string|null}>;
- await say(chatId,orders.length?`Your latest ${sandboxMode?'TEST ':''}bookings:\n\n`+orders.map(o=>`${o.id} · ${o.status} · ${new Date(o.created_at).toLocaleDateString('en-IN')}${o.expires_at?' · ends '+o.expires_at:''}`).join('\n'):`No ${sandboxMode?'test ':''}bookings yet.`,buttons([[homeButton]]));
-}
 async function handleMessage(m:any){
  if(m.chat?.type!=='private')return;
  const chatId=String(m.chat.id), text=String(m.text||'');
@@ -149,7 +145,6 @@ async function handleMessage(m:any){
   }
  }
  if(/^\/id(?:@\w+)?$/.test(text)){await say(chatId,`Your Telegram numeric ID: ${chatId}`);return;}
- if(/^\/history(?:@\w+)?$/.test(text)){await showHistory(chatId);return;}
  if(text.startsWith('/support')){await say(chatId,'Contact the admin using the button below.',buttons([[supportButton()],[homeButton]]));return;}
  if(/^\/(start|home|menu)(?:@\w+)?(?:\s.*)?$/.test(text)||text==='🏠 Home'){
   const seen=db.prepare('SELECT chat_id FROM bot_visitors WHERE chat_id=?').get(chatId);
@@ -168,7 +163,7 @@ async function handleCallback(c:any){
   } else if(data==='book'){await showPlans(chatId);
   } else if(data==='availability'){await showAvailability(chatId,c.message.message_id);
   } else if(data==='proofs'){await showProofs(chatId);
-  } else if(data==='history'){await showHistory(chatId);
+  } else if(data==='history'){await showWelcome(chatId,false);
   } else if(data==='support'){
    await say(chatId,'The admin has not set a support username yet. Please try again later.',buttons([[homeButton]]));
   } else if(data.startsWith('hours:')){
@@ -205,7 +200,7 @@ async function handleCallback(c:any){
 export function startTestBot(){
  if(!token){console.log('[Bot] Set TELEGRAM_BOT_TOKEN to enable the test bot.');return;}
  if(!adminId)console.log('[Bot] Send /id to the bot, then set TELEGRAM_ADMIN_ID and restart before trying approvals.');
- api('setMyCommands',{commands:[{command:'start',description:'Open booking menu'},{command:'home',description:'Return to home'},{command:'history',description:'My test bookings'},{command:'support',description:'Contact admin'}]}).catch(e=>console.error('[Bot] Could not set commands',e));
+ api('setMyCommands',{commands:[{command:'start',description:'Open booking menu'},{command:'home',description:'Return to home'},{command:'support',description:'Contact admin'}]}).catch(e=>console.error('[Bot] Could not set commands',e));
  api('setChatMenuButton',{menu_button:{type:'commands'}}).catch(e=>console.error('[Bot] Could not set menu button',e));
  active=true;let offset=0;
  (async()=>{while(active){try{const updates=await api('getUpdates',{offset,timeout:20,allowed_updates:['message','callback_query']}) as any[];
