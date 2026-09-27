@@ -150,10 +150,10 @@ export function sandboxReset(accountId:string):{success:boolean;newPassword?:str
  return {success:true,newPassword};
 }
 export function summary(){
- const paid=db.prepare("SELECT COUNT(*) as sales,COALESCE(SUM(amount),0) as revenue FROM test_orders WHERE status IN ('approved','delivered','expired','delivery_failed','reset_failed','cancelled') AND approved_at >= '2026-09-25T18:30:00.000Z'").get() as {sales:number;revenue:number};
- return {...paid,bookings:(db.prepare("SELECT COUNT(*) as n FROM test_orders").get() as {n:number}).n,customers:(db.prepare("SELECT COUNT(DISTINCT chat_id) as n FROM test_orders").get() as {n:number}).n,pending:db.prepare("SELECT COUNT(*) as n FROM test_orders WHERE status='payment_claimed'").get() as {n:number},available:availableAccounts().length};
+ const paid=db.prepare("SELECT COUNT(*) as sales,COALESCE(SUM(amount),0) as revenue FROM test_orders WHERE history_hidden=0 AND status IN ('approved','delivered','expired','delivery_failed','reset_failed','cancelled') AND approved_at >= '2026-09-25T18:30:00.000Z'").get() as {sales:number;revenue:number};
+ return {...paid,bookings:(db.prepare("SELECT COUNT(*) as n FROM test_orders WHERE history_hidden=0").get() as {n:number}).n,customers:(db.prepare("SELECT COUNT(DISTINCT chat_id) as n FROM test_orders WHERE history_hidden=0").get() as {n:number}).n,pending:db.prepare("SELECT COUNT(*) as n FROM test_orders WHERE history_hidden=0 AND status='payment_claimed'").get() as {n:number},available:availableAccounts().length};
 }
 export function finance(){
- const rows=db.prepare("SELECT date(approved_at,'+330 minutes') AS day, COUNT(*) AS bookings, SUM(amount) AS amount FROM test_orders WHERE status IN ('approved','delivered','expired','delivery_failed','reset_failed','cancelled') AND approved_at >= '2026-09-25T18:30:00.000Z' GROUP BY day ORDER BY day DESC").all() as Array<{day:string;bookings:number;amount:number}>;
+ const rows=db.prepare("SELECT date(approved_at,'+330 minutes') AS day, COUNT(*) AS bookings, SUM(amount) AS amount FROM test_orders WHERE history_hidden=0 AND status IN ('approved','delivered','expired','delivery_failed','reset_failed','cancelled') AND approved_at >= '2026-09-25T18:30:00.000Z' GROUP BY day ORDER BY day DESC").all() as Array<{day:string;bookings:number;amount:number}>;
  return {days:rows,cutoff:'2026-09-26'};
 }

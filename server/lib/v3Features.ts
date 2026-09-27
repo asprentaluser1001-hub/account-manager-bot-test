@@ -23,7 +23,7 @@ for(const [name, definition] of [['order_type',"TEXT NOT NULL DEFAULT 'booking'"
 function log(action:string,subject:string,details:string){db.prepare('INSERT INTO v3_audit VALUES (?,?,?,?,?)').run(randomUUID(),action,subject,details,new Date().toISOString());}
 export const auditLog=()=>db.prepare('SELECT action,subject,details,created_at FROM v3_audit ORDER BY created_at DESC LIMIT 100').all();
 export const bookingEvents=(orderId:string)=>db.prepare('SELECT id,kind,amount,details,created_at FROM v3_booking_events WHERE order_id=? ORDER BY created_at DESC').all(orderId);
-export const refundStates=()=>db.prepare('SELECT order_id,status,note,updated_at FROM v3_refunds ORDER BY updated_at DESC LIMIT 200').all();
+export const refundStates=()=>db.prepare('SELECT r.order_id,r.status,r.note,r.updated_at FROM v3_refunds r JOIN test_orders o ON o.id=r.order_id WHERE o.history_hidden=0 ORDER BY r.updated_at DESC LIMIT 200').all();
 
 function activeOrder(id:string):TestOrder{
  const order=getOrder(id);
@@ -85,10 +85,10 @@ export function setRefund(id:string,status:string,note:string){
 }
 
 export function financeReport(){
- const rows=db.prepare("SELECT date(approved_at,'+330 minutes') day,amount,status,order_type FROM test_orders WHERE approved_at IS NOT NULL AND approved_at >= '2026-09-25T18:30:00.000Z' ORDER BY approved_at DESC").all() as Array<{day:string;amount:number;status:string;order_type:string}>;
+ const rows=db.prepare("SELECT date(approved_at,'+330 minutes') day,amount,status,order_type FROM test_orders WHERE history_hidden=0 AND approved_at IS NOT NULL AND approved_at >= '2026-09-25T18:30:00.000Z' ORDER BY approved_at DESC").all() as Array<{day:string;amount:number;status:string;order_type:string}>;
  const confirmed=rows.filter(row=>['approved','delivered','expired','delivery_failed','reset_failed','cancelled'].includes(row.status));
  const sum=(subset:typeof rows)=>subset.reduce((value,row)=>value+row.amount,0);
  const period=(key:string)=>({period:key,bookings:confirmed.filter(row=>row.day.startsWith(key)).length,revenue:sum(confirmed.filter(row=>row.day.startsWith(key)))});
- const failures=db.prepare("SELECT COUNT(*) n FROM test_orders WHERE status IN ('rejected','payment_gateway_error')").get() as {n:number};
+ const failures=db.prepare("SELECT COUNT(*) n FROM test_orders WHERE history_hidden=0 AND status IN ('rejected','payment_gateway_error')").get() as {n:number};
  return {daily:[...new Set(confirmed.map(row=>row.day))].map(period),monthly:[...new Set(confirmed.map(row=>row.day.slice(0,7)))].map(period),total:sum(confirmed),successful:confirmed.length,failed:failures.n,refunds:refundStates()};
 }
