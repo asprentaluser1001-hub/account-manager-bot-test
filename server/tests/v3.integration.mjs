@@ -5,6 +5,7 @@ import {mkdtempSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {createServer} from 'node:net';
+import {DatabaseSync} from 'node:sqlite';
 
 async function freePort(){const server=createServer();await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const port=server.address().port;await new Promise(resolve=>server.close(resolve));return port;}
 const pause=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -24,6 +25,17 @@ test('V3 isolated mock checkout and booking lifecycle',async()=>{
   const orderId=created.data.orderId;
   assert.equal((await call(`/api/test-orders/${orderId}/extend`,'POST',{paymentConfirmed:true},token)).status,400);
   assert.equal((await call(`/api/test-orders/${orderId}/claim`,'POST',{},token)).status,200);
+  const proof='data:image/png;base64,'+'A'.repeat(100_000);
+  const proofDb=new DatabaseSync(join(dir,'v3-preview.db'));
+  proofDb.prepare('UPDATE test_orders SET proof_data_url=? WHERE id=?').run(proof,orderId);
+  proofDb.close();
+  const lightList=await call('/api/test-orders','GET',undefined,token);
+  const listed=lightList.data.orders.find(order=>order.id===orderId);
+  assert.equal(listed.has_proof,1);
+  assert.ok(!('proof_data_url' in listed));
+  assert.ok(JSON.stringify(lightList.data).length<10_000);
+  assert.equal((await call(`/api/test-orders/${orderId}/proof`)).status,401);
+  assert.equal((await call(`/api/test-orders/${orderId}/proof`,'GET',undefined,token)).data.proofDataUrl,proof);
   const available=(await call('/api/test-orders','GET',undefined,token)).data.available;
   const invalidManual=await call('/api/test-orders/manual','POST',{name:'Manual Customer',contact:'',telegramChatId:'1234567',hours:1,amount:100,accountId:available[0].id},token);
   assert.equal(invalidManual.status,400);assert.match(invalidManual.data.error,/start the Telegram bot/);
