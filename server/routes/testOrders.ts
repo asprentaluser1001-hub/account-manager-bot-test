@@ -7,6 +7,7 @@ import {auditLog,bookingEvents,endBooking,extendBooking,financeReport,refundStat
 export const testOrdersRouter=Router();testOrdersRouter.use(adminAuth);
 const fail=(res:Response,e:unknown)=>res.status(400).json({error:e instanceof Error?e.message:'Request failed'});
 testOrdersRouter.get('/',(_req,res)=>res.json({orders:recentOrders(),summary:summary(),finance:finance(),available:availableAccounts(),active:activeAccounts()}));
+testOrdersRouter.get('/:id/proof',(req,res)=>{const order=getOrder(req.params.id);if(!order||order.history_hidden||!order.proof_data_url)return res.status(404).json({error:'Payment proof unavailable'});res.setHeader('Cache-Control','no-store');return res.json({proofDataUrl:order.proof_data_url});});
 testOrdersRouter.post('/history/hide',(req,res)=>{try{res.json({removed:hideOrderHistory(req.body?.ids)})}catch(e){fail(res,e)}});
 testOrdersRouter.get('/v3/finance',(_req,res)=>res.json(financeReport()));
 testOrdersRouter.get('/v3/audit',(_req,res)=>res.json({entries:auditLog()}));
