@@ -38,6 +38,8 @@ export function extendBooking(id:string):TestOrder{
   const order=activeOrder(id),accountId=order.account_id!;
   const account=db.prepare('SELECT sold,sold_until FROM accounts WHERE id=?').get(accountId) as {sold:number;sold_until:string|null}|undefined;
   if(!account?.sold||!account.sold_until||account.sold_until!==order.expires_at)throw new Error('Booking timer changed; refresh and try again');
+  const reset=db.prepare('SELECT status FROM auto_reset_schedule WHERE account_id=?').get(accountId) as {status:string}|undefined;
+  if(reset?.status!=='pending')throw new Error('Account reset has started or failed; cannot extend');
   const now=new Date().toISOString(),expires=new Date(new Date(order.expires_at!).getTime()+50*60000).toISOString();
   db.prepare('UPDATE accounts SET sold_until=? WHERE id=? AND sold_until=?').run(expires,accountId,order.expires_at);
   db.prepare("UPDATE test_orders SET expires_at=? WHERE id=?").run(expires,id);
@@ -45,7 +47,7 @@ export function extendBooking(id:string):TestOrder{
   const extensionId='EXT-'+randomUUID().slice(0,8).toUpperCase();
   db.prepare("INSERT INTO test_orders(id,chat_id,username,hours,amount,status,account_id,created_at,approved_at,expires_at,source,customer_contact,order_type,parent_order_id,duration_minutes) VALUES (?,?,?,?,?,'delivered',?,?,?,?,?,?,'extension',?,50)")
     .run(extensionId,order.chat_id,order.username,1,50,accountId,now,now,expires,order.source,order.customer_contact,id);
-  event(id,'extend',50,'Added 50 minutes; mock payment recorded by admin');log('booking.extend',id,extensionId);
+  event(id,'extend',50,process.env.V3_PREVIEW==='true'?'Added 50 minutes; mock payment recorded by admin':'Added 50 minutes; payment verified by admin');log('booking.extend',id,extensionId);
   return getOrder(id)!;
  })();
 }
@@ -64,7 +66,7 @@ export function endBooking(id:string,reason:'end_early'|'cancel'):TestOrder{
 export function transferBooking(id:string,newAccountId:string):TestOrder{
  return db.transaction(()=>{
   const order=activeOrder(id);
-  if(!availableAccounts().some(account=>account.id===newAccountId))throw new Error('Choose a different available sample account');
+  if(!availableAccounts().some(account=>account.id===newAccountId))throw new Error('Choose a different available account');
   const oldAccountId=order.account_id!,now=new Date().toISOString();
   const changed=db.prepare('UPDATE accounts SET sold=1,sold_until=? WHERE id=? AND sold=0').run(order.expires_at,newAccountId);
   if(!changed.changes)throw new Error('New account is no longer available');

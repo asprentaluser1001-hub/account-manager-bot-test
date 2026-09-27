@@ -7,6 +7,7 @@ import Checkout from './Checkout';
 import OverviewPanel from './OverviewPanel';
 import BookingControls from './BookingControls';
 import V3Reports from './V3Reports';
+import ManualExtension from './ManualExtension';
 
 interface Account {
   id: string;
@@ -851,7 +852,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
 
         </div>
 
-        {activeTab === 'manual' && <OrdersPanel token={token} view="manual" onBookingChanged={load} />}
+        {activeTab === 'manual' && <><OrdersPanel token={token} view="manual" onBookingChanged={load} /><ManualExtension token={token} onBookingChanged={load}/></>}
         {activeTab === 'finance' && <><OrdersPanel token={token} view="finance" /><V3Reports token={token} /></>}
 
         {/* ─── Reset History ─────────────────────────────────── */}

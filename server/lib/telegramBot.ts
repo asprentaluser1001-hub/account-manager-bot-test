@@ -110,20 +110,20 @@ export async function sendAdminBookingEnd(order:TestOrder){
 }
 export async function sendCustomerDelivery(order:TestOrder,email:string,password:string){
  if(!token)return false;
- try {await say(order.chat_id,`TEST ACCESS · ${order.id}\nLogin: ${email}\nPassword: ${password}\nEnds: ${order.expires_at}\nOnly sample credentials are used in this sandbox.`,buttons([[homeButton]]));return true;}
+ try {const preview=process.env.V3_PREVIEW==='true';await say(order.chat_id,`${preview?'TEST ACCESS':'ACCESS'} · ${order.id}\nLogin: ${email}\nPassword: ${password}\nEnds: ${order.expires_at}${preview?'\nOnly sample credentials are used in this sandbox.':''}`,buttons([[homeButton]]));return true;}
  catch(e){console.error('[Bot] Customer delivery failed',e);return false;}
 }
 export async function sendCustomerStatus(order:TestOrder,status:string){
  if(!token||order.source!=='telegram')return false;
- try{await say(order.chat_id,`TEST ORDER ${order.id}\nStatus: ${status}\nNo real payment is collected in this preview.`);return true;}catch(e){console.error('[Bot] Status notification failed',e);return false;}
+ try{await say(order.chat_id,`${sandboxMode?'TEST ':''}ORDER ${order.id}\nStatus: ${status}${sandboxMode?'\nNo real payment is collected in this preview.':''}`);return true;}catch(e){console.error('[Bot] Status notification failed',e);return false;}
 }
 export async function sendExpiryReminder(order:TestOrder){
  if(!token||order.source!=='telegram')return false;
- try{await say(order.chat_id,`Reminder: TEST booking ${order.id} is ending soon (${order.expires_at}). Contact the admin if you need more time.`);return true;}catch(e){console.error('[Bot] Expiry reminder failed',e);return false;}
+ try{await say(order.chat_id,`Reminder: ${sandboxMode?'TEST ':''}booking ${order.id} is ending soon (${order.expires_at}). Contact the admin if you need more time.`);return true;}catch(e){console.error('[Bot] Expiry reminder failed',e);return false;}
 }
 async function showHistory(chatId:string){
  const orders=db.prepare("SELECT id,status,created_at,expires_at FROM test_orders WHERE chat_id=? AND source='telegram' ORDER BY created_at DESC LIMIT 10").all(chatId) as Array<{id:string;status:string;created_at:string;expires_at:string|null}>;
- await say(chatId,orders.length?'Your latest TEST bookings:\n\n'+orders.map(o=>`${o.id} · ${o.status} · ${new Date(o.created_at).toLocaleDateString('en-IN')}${o.expires_at?' · ends '+o.expires_at:''}`).join('\n'):'No test bookings yet.',buttons([[homeButton]]));
+ await say(chatId,orders.length?`Your latest ${sandboxMode?'TEST ':''}bookings:\n\n`+orders.map(o=>`${o.id} · ${o.status} · ${new Date(o.created_at).toLocaleDateString('en-IN')}${o.expires_at?' · ends '+o.expires_at:''}`).join('\n'):`No ${sandboxMode?'test ':''}bookings yet.`,buttons([[homeButton]]));
 }
 async function handleMessage(m:any){
  if(m.chat?.type!=='private')return;
@@ -140,7 +140,7 @@ async function handleMessage(m:any){
    saveSetting('support_username',username);await say(chatId,`Support button now opens @${username}.`);return;
   }
   if(/^\/stock(?:@\w+)?$/.test(text)){
-   const available=availableAccounts();await say(chatId,available.length?`Available sample IDs: ${available.map(a=>a.name).join(', ')}`:'No sample IDs available.');return;
+   const available=availableAccounts();await say(chatId,available.length?`Available ${sandboxMode?'sample ':''}IDs: ${available.map(a=>a.name).join(', ')}`:`No ${sandboxMode?'sample ':''}IDs available.`);return;
   }
  }
  if(/^\/id(?:@\w+)?$/.test(text)){await say(chatId,`Your Telegram numeric ID: ${chatId}`);return;}

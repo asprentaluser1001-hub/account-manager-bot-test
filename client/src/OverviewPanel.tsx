@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import {usePreviewMode} from './usePreviewMode';
 
 type AccountSummary = { sold: boolean };
 type Order = { id: string; username: string; status: string; expires_at: string | null; created_at: string; account_id: string | null };
@@ -12,6 +13,7 @@ function indiaDay(date: Date) {
 }
 
 export default function OverviewPanel({ token, accounts, onNavigate }: { token: string; accounts: AccountSummary[]; onNavigate: (tab: Destination) => void }) {
+  const preview=usePreviewMode();
   const [data, setData] = useState<Overview | null>(null);
   const [error, setError] = useState('');
   const [now, setNow] = useState(Date.now());
@@ -37,15 +39,15 @@ export default function OverviewPanel({ token, accounts, onNavigate }: { token: 
   const max = Math.max(1, ...days.map(day => day.count));
 
   return <div className="v3-overview">
-    <div className="v3-overview-heading"><div><p className="v3-eyebrow">Developer preview · test data</p><h2>Overview</h2><p>Account bookings and payments at a glance</p></div><span className="v3-today">Today</span></div>
+    <div className="v3-overview-heading"><div>{preview&&<p className="v3-eyebrow">Developer preview · test data</p>}<h2>Overview</h2><p>Account bookings and payments at a glance</p></div><span className="v3-today">Today</span></div>
     {error && <p role="alert" className="v3-error">{error} <button onClick={load}>Retry</button></p>}
     <div className="v3-metrics">
       <button onClick={() => onNavigate('history')} className="v3-glass v3-metric"><span className="v3-metric-icon">◷</span><span>Active bookings<strong>{active.length.toString().padStart(2, '0')}</strong></span><span aria-hidden="true">›</span></button>
       <button onClick={() => onNavigate('accounts')} className="v3-glass v3-metric"><span className="v3-metric-icon">◎</span><span>Available accounts<strong>{(accounts.length ? accounts.filter(a => !a.sold).length : data?.summary.available || 0).toString().padStart(2, '0')}</strong></span><span aria-hidden="true">›</span></button>
-      <button onClick={() => onNavigate('finance')} className="v3-glass v3-metric" title="Confirmed test-booking earnings since 26 Sep 2026"><span className="v3-metric-icon">₹</span><span>Total earnings<strong>₹{(data?.summary.revenue || 0).toLocaleString('en-IN')}</strong></span><span aria-hidden="true">›</span></button>
+      <button onClick={() => onNavigate('finance')} className="v3-glass v3-metric" title="Confirmed booking earnings since 26 Sep 2026"><span className="v3-metric-icon">₹</span><span>Total earnings<strong>₹{(data?.summary.revenue || 0).toLocaleString('en-IN')}</strong></span><span aria-hidden="true">›</span></button>
       <button onClick={() => onNavigate('history')} className="v3-glass v3-metric"><span className="v3-metric-icon">◴</span><span>Expiring soon<strong>{expiring.length.toString().padStart(2, '0')}</strong></span><span aria-hidden="true">›</span></button>
     </div>
     <section className="v3-glass v3-overview-card" aria-label="Weekly bookings"><div className="v3-section-head"><h3>Weekly bookings</h3><span>Last 7 days</span></div><div className="v3-chart">{days.map(day => <div className="v3-chart-day" key={day.key}><span>{day.count}</span><div className="v3-chart-track"><i style={{ height: `${Math.max(day.count ? day.count / max * 100 : 3, 3)}%` }} /></div><small>{day.label}</small></div>)}</div></section>
-    <section className="v3-glass v3-overview-card"><div className="v3-section-head"><h3>Live bookings</h3><button onClick={() => onNavigate('history')}>View all ›</button></div>{active.length ? active.slice(0, 3).map(order => <div className="v3-booking-row" key={order.id}><div className="v3-booking-info"><strong>{order.username}</strong><small>{order.id}</small></div><span className="v3-active-pill">Active</span><span className="v3-remaining">{Math.max(0, Math.ceil((new Date(order.expires_at!).getTime() - now) / 60000))}m left</span><button onClick={() => onNavigate('history')} className="v3-manage">Manage</button></div>) : <p className="v3-empty">No active test bookings yet. New bookings will appear here.</p>}</section>
+    <section className="v3-glass v3-overview-card"><div className="v3-section-head"><h3>Live bookings</h3><button onClick={() => onNavigate('history')}>View all ›</button></div>{active.length ? active.slice(0, 3).map(order => <div className="v3-booking-row" key={order.id}><div className="v3-booking-info"><strong>{order.username}</strong><small>{order.id}</small></div><span className="v3-active-pill">Active</span><span className="v3-remaining">{Math.max(0, Math.ceil((new Date(order.expires_at!).getTime() - now) / 60000))}m left</span><button onClick={() => onNavigate('history')} className="v3-manage">Manage</button></div>) : <p className="v3-empty">No active bookings yet. New bookings will appear here.</p>}</section>
   </div>;
 }

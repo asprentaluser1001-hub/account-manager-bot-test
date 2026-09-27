@@ -1,49 +1,851 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from "react";
+import {usePreviewMode} from './usePreviewMode';
 
-type Order = { id:string; username:string; chat_id:string; hours:number; amount:number; status:string; account_id:string|null; created_at:string; claimed_at:string|null; approved_at:string|null; expires_at:string|null; delivered_at:string|null; error:string|null; source:string; customer_contact:string|null; payment_reference:string|null; proof_data_url:string|null };
-type Overview = { orders:Order[]; summary:{ sales:number; revenue:number; bookings:number; customers:number; pending:{n:number}; available:number }; finance:{days:{day:string;amount:number;bookings:number}[];cutoff:string}; available:{id:string; name:string}[] };
-export type OrdersView = 'approvals' | 'manual' | 'finance' | 'history';
+type Order = {
+  id: string;
+  username: string;
+  chat_id: string;
+  hours: number;
+  amount: number;
+  status: string;
+  account_id: string | null;
+  created_at: string;
+  claimed_at: string | null;
+  approved_at: string | null;
+  expires_at: string | null;
+  delivered_at: string | null;
+  error: string | null;
+  source: string;
+  customer_contact: string | null;
+  payment_reference: string | null;
+  proof_data_url: string | null;
+  order_type?: string;
+  parent_order_id?: string | null;
+};
+type Overview = {
+  orders: Order[];
+  summary: {
+    sales: number;
+    revenue: number;
+    bookings: number;
+    customers: number;
+    pending: { n: number };
+    available: number;
+  };
+  finance: {
+    days: { day: string; amount: number; bookings: number }[];
+    cutoff: string;
+  };
+  available: { id: string; name: string }[];
+  active: { id: string; name: string; soldUntil: string }[];
+};
+export type OrdersView = "approvals" | "manual" | "finance" | "history";
 
-const complete = new Set(['approved', 'delivered', 'expired', 'delivery_failed', 'reset_failed','cancelled']);
-const money = (amount:number) => `₹${amount.toLocaleString('en-IN')}`;
-const duration = (hours:number) => hours===168 ? '1 week' : hours===720 ? '1 month' : `${hours} hour${hours===1?'':'s'}`;
-const formatTime = (value:string|null) => value ? new Date(value).toLocaleString('en-IN',{dateStyle:'medium',timeStyle:'short'}) : '—';
-const indiaDay=(value:Date)=>{const parts=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(value);const get=(name:string)=>parts.find(part=>part.type===name)?.value||'';return `${get('year')}-${get('month')}-${get('day')}`};
-const prices:Record<number,number>={1:100,2:150,3:200,168:750,720:1800};
-const statusLabel = (value:string) => ({ awaiting_payment_claim:'Awaiting test claim',payment_claimed:'Needs approval',approved:'Approved',delivered:'Delivered',rejected:'Rejected',expired:'Completed',delivery_failed:'Delivery issue',reset_failed:'Reset issue',cancelled:'Cancelled' }[value] || value.replace(/_/g,' '));
+const complete = new Set([
+  "approved",
+  "delivered",
+  "expired",
+  "delivery_failed",
+  "reset_failed",
+  "cancelled",
+]);
+const money = (amount: number) => `₹${amount.toLocaleString("en-IN")}`;
+const duration = (hours: number) =>
+  hours === 168
+    ? "1 week"
+    : hours === 720
+      ? "1 month"
+      : `${hours} hour${hours === 1 ? "" : "s"}`;
+const formatTime = (value: string | null) =>
+  value
+    ? new Date(value).toLocaleString("en-IN", {
+        dateStyle: "medium",
+        timeStyle: "short",
+      })
+    : "—";
+const indiaDay = (value: Date) => {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(value);
+  const get = (name: string) =>
+    parts.find((part) => part.type === name)?.value || "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+};
+const prices: Record<number, number> = {
+  1: 100,
+  2: 150,
+  3: 200,
+  168: 750,
+  720: 1800,
+};
+const statusLabel = (value: string) =>
+  ({
+    awaiting_payment_claim: "Awaiting payment",
+    payment_claimed: "Needs approval",
+    approved: "Approved",
+    delivered: "Delivered",
+    rejected: "Rejected",
+    expired: "Completed",
+    delivery_failed: "Delivery issue",
+    reset_failed: "Reset issue",
+    cancelled: "Cancelled",
+  })[value] || value.replace(/_/g, " ");
 
-function StatusPill({status}:{status:string}) {
-  const style=status==='payment_claimed'?'bg-amber-50 text-amber-700 border-amber-200':['approved','delivered','expired'].includes(status)?'bg-emerald-50 text-emerald-700 border-emerald-200':['rejected','delivery_failed','reset_failed'].includes(status)?'bg-red-50 text-red-700 border-red-200':'bg-slate-100 text-slate-600 border-slate-200';
-  return <span className={`inline-flex border rounded-full px-2.5 py-1 text-[11px] font-semibold ${style}`}>{statusLabel(status)}</span>;
+function StatusPill({ status }: { status: string }) {
+  const style =
+    status === "payment_claimed"
+      ? "bg-amber-50 text-amber-700 border-amber-200"
+      : ["approved", "delivered", "expired"].includes(status)
+        ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+        : ["rejected", "delivery_failed", "reset_failed"].includes(status)
+          ? "bg-red-50 text-red-700 border-red-200"
+          : "bg-slate-100 text-slate-600 border-slate-200";
+  return (
+    <span
+      className={`inline-flex border rounded-full px-2.5 py-1 text-[11px] font-semibold ${style}`}
+    >
+      {statusLabel(status)}
+    </span>
+  );
 }
 
-export default function OrdersPanel({token,view,onBookingChanged}:{token:string;view:OrdersView;onBookingChanged?:()=>void}) {
-  const [data,setData]=useState<Overview|null>(null);
-  const [error,setError]=useState('');
-  const [confirmation,setConfirmation]=useState('');
-  const [busy,setBusy]=useState<string|null>(null);
-  const [accountByOrder,setAccountByOrder]=useState<Record<string,string>>({});
-  const [manual,setManual]=useState({name:'',contact:'',telegramChatId:'',hours:1,amount:100,accountId:'',received:false});
-  const [selected,setSelected]=useState<string[]>([]);
-  const load=useCallback(async()=>{try{const response=await fetch('/api/test-orders',{headers:{Authorization:`Bearer ${token}`}});const body=await response.json();if(!response.ok)throw new Error(body.error||'Could not load bookings');setData(body);setError('')}catch(err){setError(err instanceof Error?err.message:'Could not load bookings')}},[token]);
-  useEffect(()=>{load();const interval=setInterval(load,15000);return()=>clearInterval(interval)},[load]);
-  async function act(orderId:string,action:'approve'|'reject') {setBusy(orderId);setError('');try{const endpoint=action==='approve'?`${orderId}/approve`:`${orderId}/reject`;const body=action==='approve'?{accountId:accountByOrder[orderId]}:{};const response=await fetch(`/api/test-orders/${endpoint}`,{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(body)});const result=await response.json();if(!response.ok)throw new Error(result.error||'Action failed');onBookingChanged?.();await load()}catch(err){setError(err instanceof Error?err.message:'Action failed')}finally{setBusy(null)}}
-  async function claim(orderId:string){if(!window.confirm('Mark this as a TEST claim? No payment is collected or verified.'))return;setBusy(orderId);setError('');try{const response=await fetch(`/api/test-orders/${encodeURIComponent(orderId)}/claim`,{method:'POST',headers:{Authorization:`Bearer ${token}`}});const result=await response.json();if(!response.ok)throw new Error(result.error||'Claim failed');onBookingChanged?.();await load()}catch(err){setError(err instanceof Error?err.message:'Claim failed')}finally{setBusy(null)}}
-  async function removeSelected(){if(!selected.length||!window.confirm(`Remove ${selected.length} selected booking${selected.length===1?'':'s'} from visible history? Its amount will be removed from finance totals; account reset and audit records remain.`))return;setBusy('history');setError('');try{const response=await fetch('/api/test-orders/history/hide',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({ids:selected})});const result=await response.json();if(!response.ok)throw new Error(result.error||'Could not remove history');setSelected([]);setConfirmation(`${result.removed} booking${result.removed===1?'':'s'} removed from history.`);await load()}catch(err){setError(err instanceof Error?err.message:'Could not remove history')}finally{setBusy(null)}}
-  async function bookManual(event:React.FormEvent){event.preventDefault();if(!manual.received)return;setBusy('manual');setError('');setConfirmation('');try{const response=await fetch('/api/test-orders/manual',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify(manual)});const result=await response.json();if(!response.ok)throw new Error(result.error||'Could not create booking');setConfirmation(result.delivered?'Booking saved. Login and password sent by Telegram. Ends '+formatTime(result.order.expires_at)+'.':'Booking saved, but Telegram delivery failed. Account is reserved; check the chat ID and send credentials privately from Accounts.');onBookingChanged?.();setManual({name:'',contact:'',telegramChatId:'',hours:1,amount:100,accountId:'',received:false});await load()}catch(err){setError(err instanceof Error?err.message:'Could not create booking')}finally{setBusy(null)}}
-  const approvals=useMemo(()=> (data?.orders||[]).filter(order=>order.status==='payment_claimed'),[data]);
-  const paidOrders=useMemo(()=> (data?.orders||[]).filter(order=>complete.has(order.status)&&order.approved_at&&indiaDay(new Date(order.approved_at))>=data!.finance.cutoff),[data]);
-  const daily=useMemo(()=>{const days=Array.from({length:7},(_,index)=>{const now=new Date();const date=new Date(now.getTime()-(6-index)*86400000);return {key:indiaDay(date),label:date.toLocaleDateString('en-IN',{weekday:'short',timeZone:'Asia/Kolkata'}),amount:0,bookings:0}});for(const day of days){const row=data?.finance.days.find(item=>item.day===day.key);if(row){day.amount=row.amount;day.bookings=row.bookings}}return days},[data]);
-  const today=daily[daily.length-1]?.amount||0,weekRevenue=daily.reduce((sum,day)=>sum+day.amount,0),maxDaily=Math.max(...daily.map(day=>day.amount),1);
-  const title=view==='approvals'?'Approvals':view==='manual'?'Manual booking':view==='finance'?'Finance':'History';
-  return <section className="admin-panel"><div className="flex items-start justify-between gap-4 mb-5"><div><p className="admin-kicker">FlingRoulette</p><h2 className="font-heading text-2xl font-bold text-slate-900">{title}</h2></div><button onClick={load} className="admin-secondary">Refresh</button></div>{error&&<div role="alert" className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">{error}</div>}
-    {view==='approvals'&&<><p className="mb-5 text-sm text-slate-500">Check the payment reference and proof, choose an account, then deliver access.</p>{!approvals.length?<Empty title="No approvals waiting" text="New customer payment proofs will appear here."/>:<div className="space-y-3">{approvals.map(order=><ApprovalCard key={order.id} order={order} available={data?.available||[]} accountId={accountByOrder[order.id]||''} busy={busy===order.id} onAccount={accountId=>setAccountByOrder(current=>({...current,[order.id]:accountId}))} onApprove={()=>act(order.id,'approve')} onReject={()=>act(order.id,'reject')}/>)}</div>}</>}
-    {confirmation&&<p role="status" className="mb-4 rounded-xl bg-emerald-50 p-3 text-emerald-800">{confirmation}</p>}{view==='manual'&&<form onSubmit={bookManual} className="space-y-4"><p className="text-sm text-slate-600">For customers who message you directly. Verify their payment yourself, the bot sends the login and password automatically. Time starts when you save the booking.</p><label className="block text-sm font-medium">Customer name<input required minLength={2} maxLength={64} className="mt-1 w-full rounded-xl border p-3" value={manual.name} onChange={e=>setManual({...manual,name:e.target.value})}/></label><label className="block text-sm font-medium">Customer Telegram ID<input required inputMode="numeric" pattern="[0-9]{1,20}" className="mt-1 w-full rounded-xl border p-3" placeholder="Ask them to send /id to the bot" value={manual.telegramChatId} onChange={e=>setManual({...manual,telegramChatId:e.target.value.trim()})}/><span className="mt-1 block text-xs text-slate-500">Customer must start the bot first, then send /id and share the number with you.</span></label><label className="block text-sm font-medium">Contact (optional)<input maxLength={100} className="mt-1 w-full rounded-xl border p-3" value={manual.contact} onChange={e=>setManual({...manual,contact:e.target.value})}/></label><label className="block text-sm font-medium">Duration<select className="mt-1 w-full rounded-xl border p-3" value={manual.hours} onChange={e=>{const hours=Number(e.target.value);setManual({...manual,hours,amount:prices[hours]})}}>{Object.entries(prices).map(([hours,price])=><option key={hours} value={hours}>{duration(Number(hours))} · {money(price)}</option>)}</select></label><label className="block text-sm font-medium">Amount received (₹)<input type="number" required min={0} max={100000} step={1} className="mt-1 w-full rounded-xl border p-3" value={manual.amount} onChange={e=>setManual({...manual,amount:Number(e.target.value)})}/></label><label className="block text-sm font-medium">Available account<select required className="mt-1 w-full rounded-xl border p-3" value={manual.accountId} onChange={e=>setManual({...manual,accountId:e.target.value})}><option value="">Choose an account</option>{data?.available.map(account=><option key={account.id} value={account.id}>{account.name}</option>)}</select></label><label className="flex gap-2 text-sm"><input type="checkbox" required checked={manual.received} onChange={e=>setManual({...manual,received:e.target.checked})}/>I verified the payment was received</label><button className="admin-primary w-full" disabled={busy==='manual'||!manual.accountId||!manual.telegramChatId||!manual.received}>{busy==='manual'?'Saving…':'Reserve account & record booking'}</button></form>}
-    {view==='finance'&&<><p className="mb-4 text-xs text-slate-500">India time · earnings from 26 Sep 2026 onward. Earlier bookings remain in History.</p><div className="grid grid-cols-2 gap-3 mb-6"><Metric label="Today" value={money(today)}/><Metric label="Last 7 days" value={money(weekRevenue)}/><Metric label="Since 26 Sep" value={money(data?.summary.revenue||0)}/><Metric label="Confirmed bookings" value={String(data?.summary.sales||0)}/></div><div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div className="flex items-center justify-between gap-3"><div><h3 className="font-semibold text-slate-900">Day-wise earnings</h3><p className="text-xs text-slate-500 mt-1">Confirmed booking revenue · last 7 days</p></div><span className="text-xs font-semibold text-violet-700 bg-violet-50 rounded-full px-2.5 py-1">INR</span></div><div className="mt-6 flex h-36 items-end justify-between gap-2">{daily.map(day=><div key={day.key} className="flex h-full flex-1 flex-col justify-end gap-2 text-center"><span className="text-[10px] font-medium text-slate-500">{day.amount?money(day.amount):''}</span><div className="min-h-1 rounded-t-md bg-violet-500/85" style={{height:`${Math.max(day.amount?(day.amount/maxDaily)*100:3,3)}%`}}/><span className="text-[11px] text-slate-500">{day.label}</span></div>)}</div></div><div className="mt-5 border-t border-slate-100 pt-4"><h3 className="font-semibold text-slate-900">Latest confirmed</h3><div className="mt-2 divide-y divide-slate-100">{paidOrders.length?paidOrders.slice(0,5).map(order=><div key={order.id} className="flex justify-between gap-3 py-2.5 text-sm"><div><p className="font-medium text-slate-800">{order.username}</p><p className="text-xs text-slate-500">{formatTime(order.approved_at||order.created_at)}</p></div><span className="font-semibold text-slate-900">{money(order.amount)}</span></div>):<p className="py-4 text-sm text-slate-500">No confirmed bookings yet.</p>}</div></div></>}
-    {view==='history'&&<>{approvals.length>0&&<div className="mb-6"><h3 className="mb-1 font-semibold text-slate-900">Test bookings needing approval ({approvals.length})</h3><p className="mb-3 text-xs text-slate-500">These are sample claims, not verified payments. Assign a sample account to continue.</p><div className="space-y-3">{approvals.map(order=><ApprovalCard key={order.id} order={order} available={data?.available||[]} accountId={accountByOrder[order.id]||''} busy={busy===order.id} onAccount={accountId=>setAccountByOrder(current=>({...current,[order.id]:accountId}))} onApprove={()=>act(order.id,'approve')} onReject={()=>act(order.id,'reject')}/>)}</div></div>}<p className="mb-5 text-sm text-slate-500">Every test request in time order. Amounts are illustrative; no payment is collected.</p><div className="mb-4 flex items-center justify-between gap-3"><p className="text-xs text-slate-500">Removing a finished booking also removes its amount from earnings and reports.</p><button type="button" className="admin-secondary text-red-700 disabled:opacity-40" disabled={!selected.length||busy==='history'} onClick={removeSelected}>Remove selected ({selected.length})</button></div>{!data?.orders.length?<Empty title="No booking history" text="Your customer requests will appear here."/>:<div className="divide-y divide-slate-100">{data.orders.map(order=><div key={order.id} className="py-4 first:pt-0"><div className="flex items-start justify-between gap-3"><input type="checkbox" className="mt-1 h-5 w-5 shrink-0" aria-label={`Select ${order.username} booking ${order.id}`} disabled={!['expired','rejected','payment_gateway_error','reset_failed','cancelled'].includes(order.status)||(!!order.account_id&&!data.available.some(account=>account.id===order.account_id))} checked={selected.includes(order.id)} onChange={event=>setSelected(current=>event.target.checked?[...current,order.id]:current.filter(id=>id!==order.id))}/><div className="min-w-0"><p className="font-semibold text-slate-900 truncate">{order.username} <span className="font-normal text-slate-400">· {order.id}</span></p><p className="mt-1 text-sm text-slate-600">{duration(order.hours)} · {money(order.amount)}</p><p className="mt-1 text-xs text-slate-500">{formatTime(order.created_at)} · {order.source==='web'?'Checkout page':order.source==='manual'?'Manual':'Telegram'}</p>{order.payment_reference&&<p className="mt-1 text-xs text-slate-500">Ref: {order.payment_reference}</p>}{order.status==='awaiting_payment_claim'&&order.source==='web'&&<button disabled={busy===order.id} onClick={()=>claim(order.id)} className="admin-secondary mt-2">Mark test claim</button>}</div><StatusPill status={order.status}/></div></div>)}</div>}</>}
-  </section>;
+export default function OrdersPanel({
+  token,
+  view,
+  onBookingChanged,
+}: {
+  token: string;
+  view: OrdersView;
+  onBookingChanged?: () => void;
+}) {
+  const [data, setData] = useState<Overview | null>(null);
+  const preview=usePreviewMode();
+  const [error, setError] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [accountByOrder, setAccountByOrder] = useState<Record<string, string>>(
+    {},
+  );
+  const [manual, setManual] = useState({
+    name: "",
+    contact: "",
+    telegramChatId: "",
+    hours: 1,
+    amount: 100,
+    accountId: "",
+    received: false,
+  });
+  const [selected, setSelected] = useState<string[]>([]);
+  const load = useCallback(async () => {
+    try {
+      const response = await fetch("/api/test-orders", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const body = await response.json();
+      if (!response.ok)
+        throw new Error(body.error || "Could not load bookings");
+      setData(body);
+      setError("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load bookings");
+    }
+  }, [token]);
+  useEffect(() => {
+    load();
+    const interval = setInterval(load, 15000);
+    return () => clearInterval(interval);
+  }, [load]);
+  async function act(orderId: string, action: "approve" | "reject") {
+    setBusy(orderId);
+    setError("");
+    try {
+      const endpoint =
+        action === "approve" ? `${orderId}/approve` : `${orderId}/reject`;
+      const body =
+        action === "approve" ? { accountId: accountByOrder[orderId] } : {};
+      const response = await fetch(`/api/test-orders/${endpoint}`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Action failed");
+      onBookingChanged?.();
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Action failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+  async function claim(orderId: string) {
+    if (
+      !window.confirm(
+        "Mark this as a TEST claim? No payment is collected or verified.",
+      )
+    )
+      return;
+    setBusy(orderId);
+    setError("");
+    try {
+      const response = await fetch(
+        `/api/test-orders/${encodeURIComponent(orderId)}/claim`,
+        { method: "POST", headers: { Authorization: `Bearer ${token}` } },
+      );
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Claim failed");
+      onBookingChanged?.();
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Claim failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+  async function removeSelected() {
+    if (
+      !selected.length ||
+      !window.confirm(
+        `Remove ${selected.length} selected booking${selected.length === 1 ? "" : "s"} from visible history? Its amount will be removed from finance totals; account reset and audit records remain.`,
+      )
+    )
+      return;
+    setBusy("history");
+    setError("");
+    try {
+      const response = await fetch("/api/test-orders/history/hide", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ ids: selected }),
+      });
+      const result = await response.json();
+      if (!response.ok)
+        throw new Error(result.error || "Could not remove history");
+      setSelected([]);
+      setConfirmation(
+        `${result.removed} booking${result.removed === 1 ? "" : "s"} removed from history.`,
+      );
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not remove history");
+    } finally {
+      setBusy(null);
+    }
+  }
+  async function bookManual(event: React.FormEvent) {
+    event.preventDefault();
+    if (!manual.received) return;
+    setBusy("manual");
+    setError("");
+    setConfirmation("");
+    try {
+      const response = await fetch("/api/test-orders/manual", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(manual),
+      });
+      const result = await response.json();
+      if (!response.ok)
+        throw new Error(result.error || "Could not create booking");
+      setConfirmation(
+        result.delivered
+          ? "Booking saved. Login and password sent by Telegram. Ends " +
+              formatTime(result.order.expires_at) +
+              "."
+          : result.manualDelivery
+            ? "Booking saved. Share credentials privately from Accounts; no Telegram message was sent."
+            : "Booking saved, but Telegram delivery failed. Account is reserved; check the chat ID and send credentials privately from Accounts.",
+      );
+      onBookingChanged?.();
+      setManual({
+        name: "",
+        contact: "",
+        telegramChatId: "",
+        hours: 1,
+        amount: 100,
+        accountId: "",
+        received: false,
+      });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not create booking");
+    } finally {
+      setBusy(null);
+    }
+  }
+  const approvals = useMemo(
+    () =>
+      (data?.orders || []).filter(
+        (order) => order.status === "payment_claimed",
+      ),
+    [data],
+  );
+  const paidOrders = useMemo(
+    () =>
+      (data?.orders || []).filter(
+        (order) =>
+          complete.has(order.status) &&
+          order.approved_at &&
+          indiaDay(new Date(order.approved_at)) >= data!.finance.cutoff,
+      ),
+    [data],
+  );
+  const daily = useMemo(() => {
+    const days = Array.from({ length: 7 }, (_, index) => {
+      const now = new Date();
+      const date = new Date(now.getTime() - (6 - index) * 86400000);
+      return {
+        key: indiaDay(date),
+        label: date.toLocaleDateString("en-IN", {
+          weekday: "short",
+          timeZone: "Asia/Kolkata",
+        }),
+        amount: 0,
+        bookings: 0,
+      };
+    });
+    for (const day of days) {
+      const row = data?.finance.days.find((item) => item.day === day.key);
+      if (row) {
+        day.amount = row.amount;
+        day.bookings = row.bookings;
+      }
+    }
+    return days;
+  }, [data]);
+  const today = daily[daily.length - 1]?.amount || 0,
+    weekRevenue = daily.reduce((sum, day) => sum + day.amount, 0),
+    maxDaily = Math.max(...daily.map((day) => day.amount), 1);
+  const title =
+    view === "approvals"
+      ? "Approvals"
+      : view === "manual"
+        ? "Manual booking"
+        : view === "finance"
+          ? "Finance"
+          : "History";
+  return (
+    <section className="admin-panel">
+      <div className="flex items-start justify-between gap-4 mb-5">
+        <div>
+          <p className="admin-kicker">FlingRoulette</p>
+          <h2 className="font-heading text-2xl font-bold text-slate-900">
+            {title}
+          </h2>
+        </div>
+        <button onClick={load} className="admin-secondary">
+          Refresh
+        </button>
+      </div>
+      {error && (
+        <div
+          role="alert"
+          className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700"
+        >
+          {error}
+        </div>
+      )}
+      {view === "approvals" && (
+        <>
+          <p className="mb-5 text-sm text-slate-500">
+            Check the payment reference and proof, choose an account, then
+            deliver access.
+          </p>
+          {!approvals.length ? (
+            <Empty
+              title="No approvals waiting"
+              text="New customer payment proofs will appear here."
+            />
+          ) : (
+            <div className="space-y-3">
+              {approvals.map((order) => (
+                <ApprovalCard
+                  key={order.id}
+                  order={order}
+                  available={data?.available || []}
+                  accountId={accountByOrder[order.id] || ""}
+                  busy={busy === order.id}
+                  onAccount={(accountId) =>
+                    setAccountByOrder((current) => ({
+                      ...current,
+                      [order.id]: accountId,
+                    }))
+                  }
+                  onApprove={() => act(order.id, "approve")}
+                  onReject={() => act(order.id, "reject")}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+      {confirmation && (
+        <p
+          role="status"
+          className="mb-4 rounded-xl bg-emerald-50 p-3 text-emerald-800"
+        >
+          {confirmation}
+        </p>
+      )}
+      {view === "manual" && (
+        <form onSubmit={bookManual} className="space-y-4">
+          <p className="text-sm text-slate-600">
+            For customers who message you directly. Verify their payment
+            yourself. With a Telegram ID, the bot sends login details automatically. Time
+            starts when you save the booking.
+          </p>
+          <label className="block text-sm font-medium">
+            Customer name
+            <input
+              required
+              minLength={2}
+              maxLength={64}
+              className="mt-1 w-full rounded-xl border p-3"
+              value={manual.name}
+              onChange={(e) => setManual({ ...manual, name: e.target.value })}
+            />
+          </label>
+          <label className="block text-sm font-medium">
+            Customer Telegram ID {preview ? "" : "(optional)"}
+            <input
+              required={preview}
+              inputMode="numeric"
+              pattern="[0-9]{1,20}"
+              className="mt-1 w-full rounded-xl border p-3"
+              placeholder="Ask them to send /id to the bot"
+              value={manual.telegramChatId}
+              onChange={(e) =>
+                setManual({ ...manual, telegramChatId: e.target.value.trim() })
+              }
+            />
+            <span className="mt-1 block text-xs text-slate-500">
+              To use bot delivery, the customer must start the bot first, then send /id and share the number with you. Otherwise, share credentials privately from Accounts.
+            </span>
+          </label>
+          <label className="block text-sm font-medium">
+            Contact (optional)
+            <input
+              maxLength={100}
+              className="mt-1 w-full rounded-xl border p-3"
+              value={manual.contact}
+              onChange={(e) =>
+                setManual({ ...manual, contact: e.target.value })
+              }
+            />
+          </label>
+          <label className="block text-sm font-medium">
+            Duration
+            <select
+              className="mt-1 w-full rounded-xl border p-3"
+              value={manual.hours}
+              onChange={(e) => {
+                const hours = Number(e.target.value);
+                setManual({ ...manual, hours, amount: prices[hours] });
+              }}
+            >
+              {Object.entries(prices).map(([hours, price]) => (
+                <option key={hours} value={hours}>
+                  {duration(Number(hours))} · {money(price)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block text-sm font-medium">
+            Amount received (₹)
+            <input
+              type="number"
+              required
+              min={0}
+              max={100000}
+              step={1}
+              className="mt-1 w-full rounded-xl border p-3"
+              value={manual.amount}
+              onChange={(e) =>
+                setManual({ ...manual, amount: Number(e.target.value) })
+              }
+            />
+          </label>
+          <label className="block text-sm font-medium">
+            Available account
+            <select
+              required
+              className="mt-1 w-full rounded-xl border p-3"
+              value={manual.accountId}
+              onChange={(e) =>
+                setManual({ ...manual, accountId: e.target.value })
+              }
+            >
+              <option value="">Choose an account</option>
+              {data?.available.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex gap-2 text-sm">
+            <input
+              type="checkbox"
+              required
+              checked={manual.received}
+              onChange={(e) =>
+                setManual({ ...manual, received: e.target.checked })
+              }
+            />
+            I verified the payment was received
+          </label>
+          <button
+            className="admin-primary w-full"
+            disabled={
+              busy === "manual" ||
+              !manual.accountId ||
+              !manual.telegramChatId ||
+              !manual.received
+            }
+          >
+            {busy === "manual" ? "Saving…" : "Reserve account & record booking"}
+          </button>
+        </form>
+      )}
+      {view === "finance" && (
+        <>
+          <p className="mb-4 text-xs text-slate-500">
+            India time · earnings from 26 Sep 2026 onward. Earlier bookings
+            remain in History.
+          </p>
+          <div className="grid grid-cols-2 gap-3 mb-6">
+            <Metric label="Today" value={money(today)} />
+            <Metric label="Last 7 days" value={money(weekRevenue)} />
+            <Metric
+              label="Since 26 Sep"
+              value={money(data?.summary.revenue || 0)}
+            />
+            <Metric
+              label="Confirmed bookings"
+              value={String(data?.summary.sales || 0)}
+            />
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="font-semibold text-slate-900">
+                  Day-wise earnings
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Confirmed booking revenue · last 7 days
+                </p>
+              </div>
+              <span className="text-xs font-semibold text-violet-700 bg-violet-50 rounded-full px-2.5 py-1">
+                INR
+              </span>
+            </div>
+            <div className="mt-6 flex h-36 items-end justify-between gap-2">
+              {daily.map((day) => (
+                <div
+                  key={day.key}
+                  className="flex h-full flex-1 flex-col justify-end gap-2 text-center"
+                >
+                  <span className="text-[10px] font-medium text-slate-500">
+                    {day.amount ? money(day.amount) : ""}
+                  </span>
+                  <div
+                    className="min-h-1 rounded-t-md bg-violet-500/85"
+                    style={{
+                      height: `${Math.max(day.amount ? (day.amount / maxDaily) * 100 : 3, 3)}%`,
+                    }}
+                  />
+                  <span className="text-[11px] text-slate-500">
+                    {day.label}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="mt-5 border-t border-slate-100 pt-4">
+            <h3 className="font-semibold text-slate-900">Latest confirmed</h3>
+            <div className="mt-2 divide-y divide-slate-100">
+              {paidOrders.length ? (
+                paidOrders.slice(0, 5).map((order) => (
+                  <div
+                    key={order.id}
+                    className="flex justify-between gap-3 py-2.5 text-sm"
+                  >
+                    <div>
+                      <p className="font-medium text-slate-800">
+                        {order.username}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {formatTime(order.approved_at || order.created_at)}
+                      </p>
+                    </div>
+                    <span className="font-semibold text-slate-900">
+                      {money(order.amount)}
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <p className="py-4 text-sm text-slate-500">
+                  No confirmed bookings yet.
+                </p>
+              )}
+            </div>
+          </div>
+        </>
+      )}
+      {view === "history" && (
+        <>
+          {approvals.length > 0 && (
+            <div className="mb-6">
+              <h3 className="mb-1 font-semibold text-slate-900">
+                Bookings needing approval ({approvals.length})
+              </h3>
+              <p className="mb-3 text-xs text-slate-500">
+                Verify the payment before assigning an account. In preview,
+                these are sample claims only.
+              </p>
+              <div className="space-y-3">
+                {approvals.map((order) => (
+                  <ApprovalCard
+                    key={order.id}
+                    order={order}
+                    available={data?.available || []}
+                    accountId={accountByOrder[order.id] || ""}
+                    busy={busy === order.id}
+                    onAccount={(accountId) =>
+                      setAccountByOrder((current) => ({
+                        ...current,
+                        [order.id]: accountId,
+                      }))
+                    }
+                    onApprove={() => act(order.id, "approve")}
+                    onReject={() => act(order.id, "reject")}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+          <p className="mb-5 text-sm text-slate-500">
+            {preview?'Sample requests; no payment is collected.':'Every request in time order with its payment status.'}
+          </p>
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <p className="text-xs text-slate-500">
+              Removing a finished booking also removes its amount from earnings
+              and reports.
+            </p>
+            <button
+              type="button"
+              className="admin-secondary text-red-700 disabled:opacity-40"
+              disabled={!selected.length || busy === "history"}
+              onClick={removeSelected}
+            >
+              Remove selected ({selected.length})
+            </button>
+          </div>
+          {!data?.orders.length ? (
+            <Empty
+              title="No booking history"
+              text="Your customer requests will appear here."
+            />
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {data.orders.map((order) => (
+                <div key={order.id} className="py-4 first:pt-0">
+                  <div className="flex items-start justify-between gap-3">
+                    <input
+                      type="checkbox"
+                      className="mt-1 h-5 w-5 shrink-0"
+                      aria-label={`Select ${order.username} booking ${order.id}`}
+                      disabled={
+                        ![
+                          "expired",
+                          "rejected",
+                          "payment_gateway_error",
+                          "reset_failed",
+                          "cancelled",
+                        ].includes(order.status) ||
+                        (!!order.account_id &&
+                          !data.available.some(
+                            (account) => account.id === order.account_id,
+                          ))
+                      }
+                      checked={selected.includes(order.id)}
+                      onChange={(event) =>
+                        setSelected((current) =>
+                          event.target.checked
+                            ? [...current, order.id]
+                            : current.filter((id) => id !== order.id),
+                        )
+                      }
+                    />
+                    <div className="min-w-0">
+                      <p className="font-semibold text-slate-900 truncate">
+                        {order.username}{" "}
+                        <span className="font-normal text-slate-400">
+                          · {order.id}
+                        </span>
+                      </p>
+                      <p className="mt-1 text-sm text-slate-600">
+                        {duration(order.hours)} · {money(order.amount)}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {formatTime(order.created_at)} ·{" "}
+                        {order.source === "web"
+                          ? "Checkout page"
+                          : order.source === "manual"
+                            ? "Manual"
+                            : "Telegram"}
+                      </p>
+                      {order.payment_reference && (
+                        <p className="mt-1 text-xs text-slate-500">
+                          Ref: {order.payment_reference}
+                        </p>
+                      )}
+                      {preview&&order.status === "awaiting_payment_claim" &&
+                        order.source === "web" && (
+                          <button
+                            disabled={busy === order.id}
+                            onClick={() => claim(order.id)}
+                            className="admin-secondary mt-2"
+                          >
+                            Mark test claim
+                          </button>
+                        )}
+                    </div>
+                    <StatusPill status={order.status} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  );
 }
 
-function ApprovalCard({order,available,accountId,busy,onAccount,onApprove,onReject}:{order:Order;available:{id:string;name:string}[];accountId:string;busy:boolean;onAccount:(id:string)=>void;onApprove:()=>void;onReject:()=>void}) {return <article className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="font-semibold text-slate-900 truncate">{order.username}</p><p className="mt-1 text-sm text-slate-600">{duration(order.hours)} · <b className="text-slate-900">{money(order.amount)}</b></p><p className="mt-1 text-xs text-slate-500">{formatTime(order.claimed_at||order.created_at)}</p></div><StatusPill status={order.status}/></div><div className="mt-3 flex items-center gap-3 rounded-xl bg-white border border-slate-200 p-2.5">{order.proof_data_url?<a href={order.proof_data_url} target="_blank" rel="noreferrer"><img src={order.proof_data_url} alt="Payment proof" className="h-14 w-14 rounded-lg object-cover border border-slate-100"/></a>:<div className="grid h-14 w-14 place-items-center rounded-lg bg-slate-100 text-xs text-slate-400">No image</div>}<div className="min-w-0"><p className="text-xs font-medium text-slate-500">Payment reference</p><p className="truncate text-sm font-medium text-slate-800">{order.payment_reference||'Not provided'}</p>{order.customer_contact&&<p className="mt-0.5 truncate text-xs text-slate-500">{order.customer_contact}</p>}</div></div><label className="mt-3 block text-xs font-medium text-slate-600">Account to deliver<select className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900" value={accountId} onChange={event=>onAccount(event.target.value)}><option value="">Choose an available account</option>{available.map(account=><option key={account.id} value={account.id}>{account.name}</option>)}</select></label><div className="mt-3 grid grid-cols-2 gap-2"><button disabled={busy||!accountId} onClick={onApprove} className="admin-primary disabled:opacity-45">{busy?'Saving…':'Approve & deliver'}</button><button disabled={busy} onClick={onReject} className="admin-secondary text-red-700 hover:bg-red-50">Reject</button></div></article>}
-function Metric({label,value}:{label:string;value:string}) {return <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3.5"><p className="text-xs text-slate-500">{label}</p><p className="mt-1 text-xl font-bold tracking-tight text-slate-900">{value}</p></div>}
-function Empty({title,text}:{title:string;text:string}) {return <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center"><p className="font-semibold text-slate-800">{title}</p><p className="mt-1 text-sm text-slate-500">{text}</p></div>}
+function ApprovalCard({
+  order,
+  available,
+  accountId,
+  busy,
+  onAccount,
+  onApprove,
+  onReject,
+}: {
+  order: Order;
+  available: { id: string; name: string }[];
+  accountId: string;
+  busy: boolean;
+  onAccount: (id: string) => void;
+  onApprove: () => void;
+  onReject: () => void;
+}) {
+  return (
+    <article className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-semibold text-slate-900 truncate">
+            {order.username}
+          </p>
+          <p className="mt-1 text-sm text-slate-600">
+            {duration(order.hours)} ·{" "}
+            <b className="text-slate-900">{money(order.amount)}</b>
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            {formatTime(order.claimed_at || order.created_at)}
+          </p>
+        </div>
+        <StatusPill status={order.status} />
+      </div>
+      <div className="mt-3 flex items-center gap-3 rounded-xl bg-white border border-slate-200 p-2.5">
+        {order.proof_data_url ? (
+          <a href={order.proof_data_url} target="_blank" rel="noreferrer">
+            <img
+              src={order.proof_data_url}
+              alt="Payment proof"
+              className="h-14 w-14 rounded-lg object-cover border border-slate-100"
+            />
+          </a>
+        ) : (
+          <div className="grid h-14 w-14 place-items-center rounded-lg bg-slate-100 text-xs text-slate-400">
+            No image
+          </div>
+        )}
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-slate-500">
+            Payment reference
+          </p>
+          <p className="truncate text-sm font-medium text-slate-800">
+            {order.payment_reference || "Not provided"}
+          </p>
+          {order.customer_contact && (
+            <p className="mt-0.5 truncate text-xs text-slate-500">
+              {order.customer_contact}
+            </p>
+          )}
+        </div>
+      </div>
+      <label className="mt-3 block text-xs font-medium text-slate-600">
+        Account to deliver
+        <select
+          className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900"
+          value={accountId}
+          onChange={(event) => onAccount(event.target.value)}
+        >
+          <option value="">Choose an available account</option>
+          {available.map((account) => (
+            <option key={account.id} value={account.id}>
+              {account.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <button
+          disabled={busy || !accountId}
+          onClick={onApprove}
+          className="admin-primary disabled:opacity-45"
+        >
+          {busy ? "Saving…" : "Approve & deliver"}
+        </button>
+        <button
+          disabled={busy}
+          onClick={onReject}
+          className="admin-secondary text-red-700 hover:bg-red-50"
+        >
+          Reject
+        </button>
+      </div>
+    </article>
+  );
+}
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3.5">
+      <p className="text-xs text-slate-500">{label}</p>
+      <p className="mt-1 text-xl font-bold tracking-tight text-slate-900">
+        {value}
+      </p>
+    </div>
+  );
+}
+function Empty({ title, text }: { title: string; text: string }) {
+  return (
+    <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-10 text-center">
+      <p className="font-semibold text-slate-800">{title}</p>
+      <p className="mt-1 text-sm text-slate-500">{text}</p>
+    </div>
+  );
+}

@@ -33,7 +33,7 @@ authRouter.post('/login', (req: Request, res: Response) => {
   }
   failedLogins.delete(key);
 
-  const token = jwt.sign({ role: 'admin' }, JWT_SECRET + ADMIN_PASSWORD, { expiresIn: TOKEN_TTL });
+  const token = jwt.sign({ role: 'admin' }, process.env.V3_PREVIEW === 'true' ? JWT_SECRET + ADMIN_PASSWORD : JWT_SECRET, { expiresIn: TOKEN_TTL });
   return res.json({ token });
 });
 
@@ -49,7 +49,7 @@ export function adminAuth(req: Request, res: Response, next: NextFunction) {
   }
 
   try {
-    jwt.verify(token, JWT_SECRET + ADMIN_PASSWORD);
+    jwt.verify(token, process.env.V3_PREVIEW === 'true' ? JWT_SECRET + ADMIN_PASSWORD : JWT_SECRET);
     return next();
   } catch {
     return res.status(401).json({ error: 'Invalid or expired token' });
@@ -68,8 +68,8 @@ authRouter.post('/change-admin-password', adminAuth, (req: Request, res: Respons
   if (typeof currentPassword !== 'string' || currentPassword.length === 0) {
     return res.status(400).json({ error: 'currentPassword is required' });
   }
-  if (typeof newPassword !== 'string' || newPassword.length < 12 || /[\r\n]/.test(newPassword)) {
-    return res.status(400).json({ error: 'newPassword must be at least 12 characters and contain no line breaks' });
+  if (typeof newPassword !== 'string' || newPassword.length < (process.env.V3_PREVIEW === 'true' ? 12 : 6) || /[\r\n]/.test(newPassword)) {
+    return res.status(400).json({ error: 'newPassword must meet the minimum length and contain no line breaks' });
   }
   if (currentPassword !== ADMIN_PASSWORD) {
     return res.status(401).json({ error: 'Current password is incorrect' });
