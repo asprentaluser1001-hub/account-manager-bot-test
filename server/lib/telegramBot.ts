@@ -103,6 +103,11 @@ export async function sendAdminClaim(order:TestOrder){
  try {await say(adminId,`${sandboxMode?'TEST ':' '}Payment claim\nOrder ${order.id} · ${customer} · ${duration(order.hours)} · ₹${order.amount}\nReview this booking in History before delivering access.`,buttons([[{text:'Show available accounts',callback_data:`stock:${order.id}`}],[{text:'Reject claim',callback_data:`reject:${order.id}`}],[homeButton]]));return true;}
  catch(e){console.error('[Bot] Admin alert failed',e);return false;}
 }
+export async function sendAdminBookingRecorded(alert:{title:string;body:string}){
+ if(!token||!adminId)return false;
+ try {await say(adminId,`${alert.title}\n${alert.body}`);return true;}
+ catch(e){console.error('[Bot] Booking alert failed',e);return false;}
+}
 export async function sendAdminBookingEnd(order:TestOrder){
  if(!token||!adminId)return false;
  try{await say(adminId,`Booking time ended\n${order.username} · ${order.id}\nPassword reset is starting. Check Accounts for the result.`);return true;}
@@ -181,12 +186,14 @@ async function handleCallback(c:any){
    const id=data.slice(6),order=getOrder(id);if(!order||order.status!=='payment_claimed')throw new Error('Order is no longer awaiting approval');
    const options=availableAccounts();await say(adminId,options.length?`Select an account for ${id}:`:'No accounts available.',buttons(options.map(a=>[{text:a.name,callback_data:`approve:${id}:${a.id}`}])));
   } else if(chatId===adminId && data.startsWith('approve:')){
+   const {notifyBookingRecorded}=await import('./bookingNotifications');
    const [,id,accountId]=data.split(':');const details=approveOrder(id,accountId);
    if(details.order.source==='web'){
-    markDelivered(id);await say(adminId,`${id} approved. The customer's checkout page now shows the account. Reset scheduled for ${details.order.expires_at}.`);
+    markDelivered(id);void notifyBookingRecorded(getOrder(id)!);await say(adminId,`${id} approved. The customer's checkout page now shows the account. Reset scheduled for ${details.order.expires_at}.`);
    }else{
     const delivered=await sendCustomerDelivery(details.order,details.email,details.password);
     if(delivered)markDelivered(id);else markDeliveryFailed(id,'Telegram delivery failed; account remains reserved.');
+    void notifyBookingRecorded(getOrder(id)!);
     await say(adminId,delivered?`${id} approved and delivered. Reset scheduled for ${details.order.expires_at}.`:`${id} approved but delivery failed. Account remains reserved; check the dashboard.`);
    }
   } else if(chatId===adminId && data.startsWith('reject:')){

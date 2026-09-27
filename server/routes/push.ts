@@ -60,6 +60,9 @@ async function sendPush(payload:{title:string;body:string;url:string;tag:string}
 export function sendApprovalPush(order:TestOrder):Promise<number>{
  return sendPush({title:'Approval waiting',body:`${order.username} · ₹${order.amount} · ${order.id}`,url:'/?tab=approvals',tag:order.id});
 }
+export function sendBookingRecordedPush(alert:{title:string;body:string;url:string;tag:string}):Promise<number>{
+ return sendPush(alert);
+}
 export function sendBookingEndPush(order:TestOrder):Promise<number>{
  return sendPush({title:'Booking time ended',body:`${order.username} · ${order.id} · password reset is starting`,url:'/?tab=accounts',tag:`end-${order.id}`});
 }

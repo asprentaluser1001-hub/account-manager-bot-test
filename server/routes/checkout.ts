@@ -4,6 +4,7 @@ import {approveOrder,availableAccounts,claimGatewayPayment,createWebOrder,markDe
 import {db} from '../db';
 import {sendAdminClaim} from '../lib/telegramBot';
 import {sendApprovalPush} from './push';
+import {notifyBookingRecorded} from '../lib/bookingNotifications';
 import {checkImbOrder,createImbOrder,isImbConfigured} from '../lib/imbPayment';
 
 db.exec(`CREATE TABLE IF NOT EXISTS payment_settings (key TEXT PRIMARY KEY,value TEXT NOT NULL);`);
@@ -59,7 +60,7 @@ async function confirmImbPayment(orderId:string){
  const current=getOrder(orderId)!;
  if(!newlyClaimed&&current.status!=='payment_claimed')return {alreadyProcessed:true};
  for(const account of availableAccounts()){
-  try{approveOrder(orderId,account.id);markDelivered(orderId);return {alreadyProcessed:false,delivered:true};}
+  try{approveOrder(orderId,account.id);markDelivered(orderId);void notifyBookingRecorded(getOrder(orderId)!);return {alreadyProcessed:false,delivered:true};}
   catch(error){if(!(error instanceof Error)||!['Account is unavailable','Account is already in use','No IDs are available'].includes(error.message))throw error;}
  }
  if(newlyClaimed){const currentOrder=getOrder(orderId)!;await Promise.all([sendAdminClaim(currentOrder),sendApprovalPush(currentOrder)]);}

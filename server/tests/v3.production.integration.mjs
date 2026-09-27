@@ -49,6 +49,15 @@ test('production-mode migration preserves an existing booking and manual extensi
   db.prepare('INSERT INTO accounts(id,name,email,password,sold,sold_until,created_at) VALUES (?,?,?,?,0,NULL,?)').run('manual-account','Manual Account','manual@example.invalid','not-a-live-password',now);
   const offline=orders.createManualBooking('Offline Customer','',1,100,'manual-account','');
   assert.equal(offline.status,'delivered');assert.equal(offline.chat_id,'manual');
+  const {bookingAlert}=require('../dist/lib/bookingNotifications.js');
+  const alert=bookingAlert(offline);
+  assert.equal(alert.title,'Booking confirmed');
+  assert.match(alert.body,/Offline Customer · ₹100/);
+  assert.match(alert.body,/Share access privately/);
+  assert.ok(!alert.body.includes('not-a-live-password'));
+  const extendedAlert=bookingAlert(orders.getOrder(booking.id),true);
+  assert.equal(extendedAlert.title,'Booking extended');
+  assert.match(extendedAlert.body,/Test Customer · ₹50/);
  }finally{delete process.env.DB_PATH;delete process.env.TELEGRAM_BOT_TOKEN;rmSync(dir,{recursive:true,force:true});}
 });
 
