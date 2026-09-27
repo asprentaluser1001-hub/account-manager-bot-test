@@ -17,12 +17,16 @@ import {botSettingsRouter} from './routes/botSettings';
 import {checkoutRouter,paymentSettingsRouter} from './routes/checkout';
 import {pushRouter} from './routes/push';
 import {v3OpsRouter} from './routes/v3Ops';
+import {miniAppTestRouter} from './routes/miniAppTest';
 
 const sandboxMode = process.env.SANDBOX_MODE === 'true';
 const v3Preview = process.env.V3_PREVIEW === 'true';
 const paymentMode = String(process.env.PAYMENT_MODE || '').toLowerCase();
 if (v3Preview && (!sandboxMode || paymentMode !== 'mock' || process.env.IMB_API_TOKEN?.trim())) {
   throw new Error('V3 developer preview requires SANDBOX_MODE=true, PAYMENT_MODE=mock, and no IMB_API_TOKEN.');
+}
+if (process.env.MINI_APP_TEST_URL && (!v3Preview || !sandboxMode || paymentMode !== 'mock' || process.env.IMB_API_TOKEN?.trim())) {
+  throw new Error('Mini App test requires isolated V3_PREVIEW=true, SANDBOX_MODE=true and PAYMENT_MODE=mock.');
 }
 if (!process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD.length < 12 || !process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) throw new Error('Configure strong ADMIN_PASSWORD and JWT_SECRET before starting.');
 // Demo accounts are created only in the explicit sample-only mode.
@@ -35,6 +39,7 @@ const PORT = Number(process.env.PORT || 4000);
 app.use(cors());
 app.use('/api/bot-settings', botSettingsRouter);
 app.use('/api/checkout', checkoutRouter);
+app.use('/api/miniapp-test', miniAppTestRouter);
 app.use('/api/payment-settings', paymentSettingsRouter);
 app.use('/api/push', pushRouter);
 app.use(express.json({limit:'256kb'}));

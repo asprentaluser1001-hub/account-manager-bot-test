@@ -9,6 +9,7 @@ import BookingControls from './BookingControls';
 import V3Reports from './V3Reports';
 import ManualExtension from './ManualExtension';
 import { usePreviewMode } from './usePreviewMode';
+import MiniAppTest from './MiniAppTest';
 
 interface Account {
   id: string;
@@ -47,6 +48,7 @@ export default function App() {
     return () => document.documentElement.classList.remove('preview-mode');
   }, [preview]);
   const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
+  if (window.location.pathname === '/miniapp') return <MiniAppTest />;
   if (window.location.pathname.startsWith('/checkout')) return <Checkout />;
 
   if (!token) {

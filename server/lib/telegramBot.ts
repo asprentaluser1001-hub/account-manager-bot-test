@@ -200,12 +200,25 @@ async function handleCallback(c:any){
 export function startTestBot(){
  if(!token){console.log('[Bot] Set TELEGRAM_BOT_TOKEN to enable the test bot.');return;}
  if(!adminId)console.log('[Bot] Send /id to the bot, then set TELEGRAM_ADMIN_ID and restart before trying approvals.');
+ const miniUrl=process.env.MINI_APP_TEST_URL;
+ (async()=>{
+ if(miniUrl){
+  try {
+   if(process.env.V3_PREVIEW!=='true'||process.env.SANDBOX_MODE!=='true'||process.env.PAYMENT_MODE!=='mock'||process.env.IMB_API_TOKEN?.trim())throw new Error('Mini App test needs an isolated mock preview');
+   const url=new URL(miniUrl);
+   if(url.protocol!=='https:'||url.pathname!=='/miniapp'||url.search||url.hash)throw new Error('MINI_APP_TEST_URL must be a public HTTPS /miniapp URL');
+   if(process.env.TELEGRAM_TEST_BOT_USERNAME?.replace(/^@/,'').toLowerCase()!=='booking_testfling_bot')throw new Error('Expected the designated test bot username');
+   const bot=await api('getMe',{});
+   if(bot.username?.toLowerCase()!=='booking_testfling_bot')throw new Error('Configured bot is not @Booking_testfling_bot');
+  }catch(e){console.error('[Bot] Mini App test refused to start:',e instanceof Error?e.message:'configuration error');return;}
+ }
  api('setMyCommands',{commands:[{command:'start',description:'Open booking menu'},{command:'home',description:'Return to home'},{command:'support',description:'Contact admin'}]}).catch(e=>console.error('[Bot] Could not set commands',e));
- api('setChatMenuButton',{menu_button:{type:'commands'}}).catch(e=>console.error('[Bot] Could not set menu button',e));
+ api('setChatMenuButton',{menu_button:miniUrl?{type:'web_app',text:'Open test app',web_app:{url:miniUrl}}:{type:'commands'}}).catch(e=>console.error('[Bot] Could not set menu button',e));
  active=true;let offset=0;
  (async()=>{while(active){try{const updates=await api('getUpdates',{offset,timeout:20,allowed_updates:['message','callback_query']}) as any[];
   for(const u of updates){offset=Math.max(offset,u.update_id+1);try{if(u.message)await handleMessage(u.message);if(u.callback_query)await handleCallback(u.callback_query);}catch(e){console.error('[Bot] Update error',e);}}
  }catch(e){console.error('[Bot] Polling error',e);await new Promise(r=>setTimeout(r,3000));}}})();
+ })().catch(e=>console.error('[Bot] Startup error',e));
 }
 
 export async function sendAdminResetResult(accountName:string,success:boolean){
