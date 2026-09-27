@@ -8,6 +8,7 @@ import OverviewPanel from './OverviewPanel';
 import BookingControls from './BookingControls';
 import V3Reports from './V3Reports';
 import ManualExtension from './ManualExtension';
+import { usePreviewMode } from './usePreviewMode';
 
 interface Account {
   id: string;
@@ -40,6 +41,11 @@ function vapidBytes(value:string):Uint8Array<ArrayBuffer>{
 }
 
 export default function App() {
+  const preview = usePreviewMode();
+  useEffect(() => {
+    document.documentElement.classList.toggle('preview-mode', preview);
+    return () => document.documentElement.classList.remove('preview-mode');
+  }, [preview]);
   const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
   if (window.location.pathname.startsWith('/checkout')) return <Checkout />;
 
