@@ -4,6 +4,10 @@ import BotSettingsPanel from './BotSettingsPanel';
 import PaymentSettingsPanel from './PaymentSettingsPanel';
 import { APP_NAME, APP_VERSION, BUILD_NUMBER, COPYRIGHT_OWNER } from './version';
 import Checkout from './Checkout';
+import OverviewPanel from './OverviewPanel';
+import BookingControls from './BookingControls';
+import V3Reports from './V3Reports';
+import ManualExtension from './ManualExtension';
 
 interface Account {
   id: string;
@@ -54,7 +58,15 @@ function Icon({ path, className = 'w-4 h-4', stroke = 1.7 }: { path: string; cla
     </svg>
   );
 }
+function BrandMark() {
+  return <span className="v3-mark" aria-hidden="true"><svg viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="18" stroke="currentColor" strokeWidth="1.4"/><path d="M13 29V17c0-5 3-8 8-8h8M13 19h14c0 5-3 8-8 8h-6" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/></svg></span>;
+}
 const ICONS = {
+  home: 'M3 10.5L12 3l9 7.5V21h-6v-6H9v6H3V10.5z',
+  bookings: 'M6 3v4m12-4v4M4 9h16M5 5h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z',
+  accounts: 'M16 20v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2m17-6a4 4 0 014 4v2h-5M9 10a4 4 0 100-8 4 4 0 000 8zm8 0a3 3 0 100-6',
+  reports: 'M4 20V12m5 8V7m5 13V4m5 16V9',
+  more: 'M4 6h16M4 12h16M4 18h16',
   shield: 'M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z',
   logout: 'M15 12H3m0 0l4-4m-4 4l4 4M13 4h6a1 1 0 011 1v14a1 1 0 01-1 1h-6',
   key: 'M15.5 7.5a3.5 3.5 0 11-4.9 3.2L4 17.3V20h2.7l.9-.9H9v-1.4h1.4l1-1a3.5 3.5 0 014.1-9.2z',
@@ -98,13 +110,11 @@ function Login({ onLogin }: { onLogin: (token: string) => void }) {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-5 bg-slate-50">
-      <form onSubmit={submit} className="w-full max-w-sm bg-white rounded-2xl border border-slate-200 shadow-sm p-7">
+    <div className="v3-shell v3-login min-h-screen flex items-center justify-center p-5 bg-slate-50">
+      <form onSubmit={submit} className="v3-glass w-full max-w-sm bg-white rounded-2xl border border-slate-200 shadow-sm p-7">
         <div className="flex items-center gap-2.5 mb-1">
-          <span className="grid place-items-center w-9 h-9 rounded-xl bg-slate-900 text-white">
-            <Icon path={ICONS.shield} className="w-5 h-5" />
-          </span>
-          <h1 className="font-heading text-xl font-bold text-slate-900">Account Manager</h1>
+          <BrandMark />
+          <h1 className="font-heading text-xl font-bold text-slate-900">FlingRoulette</h1>
         </div>
         <p className="font-body text-sm text-slate-500 mt-1 mb-5">Enter admin password to continue</p>
         <input
@@ -290,7 +300,8 @@ function AutoResetPicker({
 
 function Dashboard({ token, onLogout }: { token: string; onLogout: () => void }) {
   const requestedTab=new URLSearchParams(window.location.search).get('tab');
-  const [activeTab, setActiveTab] = useState<'accounts' | 'approvals' | 'manual' | 'finance' | 'history' | 'settings'>(()=>['accounts','approvals','manual','finance','history','settings'].includes(String(requestedTab))?requestedTab as 'accounts'|'approvals'|'manual'|'finance'|'history'|'settings':'accounts');
+  type Tab = 'overview' | 'accounts' | 'manual' | 'finance' | 'history' | 'settings';
+  const [activeTab, setActiveTab] = useState<Tab>(()=>requestedTab==='approvals'?'history':['overview','accounts','manual','finance','history','settings'].includes(String(requestedTab))?requestedTab as Tab:'overview');
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -475,9 +486,15 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
 
   async function cancelAutoReset(id: string) {
     try {
-      await fetch(`/api/accounts/${id}/auto-reset`, { method: 'DELETE', headers: authHeaders() });
+      const response=await fetch(`/api/accounts/${id}/auto-reset`, { method: 'DELETE', headers: authHeaders() });
+      if(!response.ok)throw new Error((await response.json()).error||'Cannot cancel reset');
       await load();
-    } catch { /* ignore */ }
+    } catch (err) {setError(err instanceof Error?err.message:'Cannot cancel reset');}
+  }
+
+  async function retryNow(id:string){
+    try {const response=await fetch(`/api/accounts/${id}/retry-now`,{method:'POST',headers:authHeaders()});if(!response.ok)throw new Error((await response.json()).error||'Retry failed');setResetResult(r=>({...r,[id]:{ok:true,msg:'Retry queued; check the status shortly.'}}));await load();}
+    catch(err){setResetResult(r=>({...r,[id]:{ok:false,msg:err instanceof Error?err.message:'Retry failed'}}));}
   }
 
   async function enablePush(){
@@ -527,14 +544,12 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
     'w-full px-3.5 py-2.5 border border-slate-300 rounded-xl text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-900/10 focus:border-slate-400';
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="v3-shell min-h-screen bg-slate-50">
       {/* Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-10">
+      <header className="v3-header bg-white border-b border-slate-200 sticky top-0 z-10">
         <div className="max-w-3xl mx-auto px-4 sm:px-5 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <span className="grid place-items-center w-9 h-9 rounded-xl bg-slate-900 text-white">
-              <Icon path={ICONS.shield} className="w-5 h-5" />
-            </span>
+            <BrandMark />
             <div><h1 className="font-heading text-lg font-bold text-slate-900">FlingRoulette</h1><p className="text-[10px] font-semibold tracking-[0.16em] uppercase text-slate-400">Admin</p></div>
           </div>
           <div className="flex items-center gap-1">
@@ -542,18 +557,19 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
             <button onClick={onLogout} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"><Icon path={ICONS.logout} className="w-4 h-4" /><span className="hidden sm:inline">Log out</span></button>
           </div>
         </div>
-        <div className="max-w-3xl mx-auto px-4 sm:px-5 pb-3 overflow-x-auto">
+        <div className="max-w-3xl mx-auto px-4 sm:px-5 pb-3">
           <nav className="admin-tabs" aria-label="Dashboard sections">
-            {([['accounts','Accounts'],['approvals','Approvals'],['manual','Manual booking'],['finance','Finance'],['history','History'],['settings','Settings']] as const).map(([id,label]) => (
-              <button key={id} onClick={() => setActiveTab(id)} className={activeTab === id ? 'active' : ''}>{label}</button>
+            {([['overview','Home','home'],['manual','Bookings','bookings'],['accounts','Accounts','accounts'],['finance','Reports','reports'],['settings','More','more']] as const).map(([id,label,icon]) => (
+              <button key={id} onClick={() => setActiveTab(id)} aria-current={(id === 'manual' ? ['manual','history'].includes(activeTab) : activeTab === id) ? 'page' : undefined} className={(id === 'manual' ? ['manual','history'].includes(activeTab) : activeTab === id) ? 'active' : ''}><Icon path={ICONS[icon]} className="w-5 h-5" /><span>{label}</span></button>
             ))}
           </nav>
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 sm:px-5 py-6">
+      <main className="v3-main max-w-3xl mx-auto px-4 sm:px-5 py-6">
         {pushMessage&&<div className={`mb-4 rounded-xl border px-3.5 py-2.5 text-sm ${pushState==='on'?'border-emerald-200 bg-emerald-50 text-emerald-700':'border-amber-200 bg-amber-50 text-amber-800'}`}>{pushMessage}</div>}
-        {activeTab === 'settings' ? (
+        {(['manual','history'] as const).includes(activeTab as 'manual'|'history') && <nav className="v3-booking-tabs" aria-label="Booking tools">{([['manual','Manual booking'],['history','History']] as const).map(([id,label])=><button key={id} onClick={()=>setActiveTab(id)} className={activeTab===id?'active':''} aria-current={activeTab===id?'page':undefined}>{label}</button>)}</nav>}
+        {activeTab === 'overview' ? <OverviewPanel token={token} accounts={accounts} onNavigate={setActiveTab} /> : activeTab === 'settings' ? (
           <>
             <PaymentSettingsPanel token={token} />
             <BotSettingsPanel token={token} />
@@ -720,6 +736,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
                             Next <span className="font-medium">{new Date(acc.autoResetAt as string).toLocaleString()}</span>
                           </span>
                         )}
+                        {acc.autoResetStatus==='failed'&&<button onClick={()=>retryNow(acc.id)} className="text-xs font-semibold text-red-700 bg-red-50 border border-red-200 rounded-full px-3 py-1">Retry reset now</button>}
                       </div>
 
                       {/* Reset result */}
@@ -756,6 +773,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
                         {/* Auto reset button */}
                         <button
                           onClick={() => onToggleAuto(acc)}
+                          disabled={acc.sold && autoOn}
                           className={`inline-flex items-center justify-center gap-2 flex-1 px-3 py-2.5 text-sm font-semibold rounded-xl border transition active:scale-[0.98] whitespace-nowrap ${
                             autoOn
                               ? 'text-emerald-700 bg-emerald-50 border-emerald-300 hover:bg-emerald-100'
@@ -763,7 +781,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
                           }`}
                         >
                           <Icon path={ICONS.clock} className="w-4 h-4 shrink-0" />
-                          {autoOn ? 'Auto reset: On' : 'Auto reset'}
+                          {autoOn ? acc.autoResetStatus==='running'?'Reset in progress':acc.autoResetStatus==='failed'?'Reset failed':'Auto reset: On' : 'Auto reset'}
                         </button>
                       </div>
 
@@ -834,13 +852,13 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
 
         </div>
 
-        {activeTab === 'approvals' && <OrdersPanel token={token} view="approvals" onBookingChanged={load} />}
-        {activeTab === 'manual' && <OrdersPanel token={token} view="manual" onBookingChanged={load} />}
-        {activeTab === 'finance' && <OrdersPanel token={token} view="finance" />}
+        {activeTab === 'manual' && <><OrdersPanel token={token} view="manual" onBookingChanged={load} /><ManualExtension token={token} onBookingChanged={load}/></>}
+        {activeTab === 'finance' && <><OrdersPanel token={token} view="finance" /><V3Reports token={token} /></>}
 
         {/* ─── Reset History ─────────────────────────────────── */}
         {activeTab === 'history' && <>
-        <OrdersPanel token={token} view="history" />
+        <BookingControls token={token} onChanged={load} />
+        <OrdersPanel token={token} view="history" onBookingChanged={load} />
         <div className="mt-9">
           <div className="flex items-center gap-2 mb-1">
             <Icon path={ICONS.history} className="w-5 h-5 text-slate-500" />

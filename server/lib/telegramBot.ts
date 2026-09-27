@@ -31,7 +31,7 @@ function supportButton():{text:string;url?:string;callback_data?:string}{
  const username=setting('support_username');
  return username?{text:'Contact admin',url:`https://t.me/${username}`}:{text:'Contact admin',callback_data:'support'};
 }
-function menu(){return buttons([[{text:'Book now',callback_data:'book'}],[{text:'Check availability',callback_data:'availability'},supportButton()],[{text:'Rates & proofs',callback_data:'proofs'}]]);}
+function menu(){return buttons([[{text:'Book now',callback_data:'book'}],[{text:'Check availability',callback_data:'availability'},supportButton()],[{text:'Rates & proofs',callback_data:'proofs'}],[{text:'My test bookings',callback_data:'history'}]]);}
 const homeButton={text:'🏠 Home',callback_data:'home'};
 async function showAvailability(chatId:string,messageId?:number){
  const text=welcomeText();
@@ -100,7 +100,7 @@ async function say(chatId:string,text:string,keyboard?:ReturnType<typeof buttons
 export async function sendAdminClaim(order:TestOrder){
  if(!token||!adminId)return false;
  const customer=order.source==='web'?order.username:`@${order.username.replace(/^@/,'')}`;
- try {await say(adminId,`${sandboxMode?'TEST ':''}Payment claim\nOrder ${order.id} · ${customer} · ${duration(order.hours)} · ₹${order.amount}\nCheck the proof in the Approvals tab before delivering access.`,buttons([[{text:'Show available accounts',callback_data:`stock:${order.id}`}],[{text:'Reject claim',callback_data:`reject:${order.id}`}],[homeButton]]));return true;}
+ try {await say(adminId,`${sandboxMode?'TEST ':' '}Payment claim\nOrder ${order.id} · ${customer} · ${duration(order.hours)} · ₹${order.amount}\nReview this booking in History before delivering access.`,buttons([[{text:'Show available accounts',callback_data:`stock:${order.id}`}],[{text:'Reject claim',callback_data:`reject:${order.id}`}],[homeButton]]));return true;}
  catch(e){console.error('[Bot] Admin alert failed',e);return false;}
 }
 export async function sendAdminBookingEnd(order:TestOrder){
@@ -110,8 +110,20 @@ export async function sendAdminBookingEnd(order:TestOrder){
 }
 export async function sendCustomerDelivery(order:TestOrder,email:string,password:string){
  if(!token)return false;
- try {await say(order.chat_id,`TEST ACCESS · ${order.id}\nLogin: ${email}\nPassword: ${password}\nEnds: ${order.expires_at}\nOnly sample credentials are used in this sandbox.`,buttons([[homeButton]]));return true;}
+ try {const preview=process.env.V3_PREVIEW==='true';await say(order.chat_id,`${preview?'TEST ACCESS':'ACCESS'} · ${order.id}\nLogin: ${email}\nPassword: ${password}\nEnds: ${order.expires_at}${preview?'\nOnly sample credentials are used in this sandbox.':''}`,buttons([[homeButton]]));return true;}
  catch(e){console.error('[Bot] Customer delivery failed',e);return false;}
+}
+export async function sendCustomerStatus(order:TestOrder,status:string){
+ if(!token||order.source!=='telegram')return false;
+ try{await say(order.chat_id,`${sandboxMode?'TEST ':''}ORDER ${order.id}\nStatus: ${status}${sandboxMode?'\nNo real payment is collected in this preview.':''}`);return true;}catch(e){console.error('[Bot] Status notification failed',e);return false;}
+}
+export async function sendExpiryReminder(order:TestOrder){
+ if(!token||order.source!=='telegram')return false;
+ try{await say(order.chat_id,`Reminder: ${sandboxMode?'TEST ':''}booking ${order.id} is ending soon (${order.expires_at}). Contact the admin if you need more time.`);return true;}catch(e){console.error('[Bot] Expiry reminder failed',e);return false;}
+}
+async function showHistory(chatId:string){
+ const orders=db.prepare("SELECT id,status,created_at,expires_at FROM test_orders WHERE chat_id=? AND source='telegram' ORDER BY created_at DESC LIMIT 10").all(chatId) as Array<{id:string;status:string;created_at:string;expires_at:string|null}>;
+ await say(chatId,orders.length?`Your latest ${sandboxMode?'TEST ':''}bookings:\n\n`+orders.map(o=>`${o.id} · ${o.status} · ${new Date(o.created_at).toLocaleDateString('en-IN')}${o.expires_at?' · ends '+o.expires_at:''}`).join('\n'):`No ${sandboxMode?'test ':''}bookings yet.`,buttons([[homeButton]]));
 }
 async function handleMessage(m:any){
  if(m.chat?.type!=='private')return;
@@ -128,10 +140,11 @@ async function handleMessage(m:any){
    saveSetting('support_username',username);await say(chatId,`Support button now opens @${username}.`);return;
   }
   if(/^\/stock(?:@\w+)?$/.test(text)){
-   const available=availableAccounts();await say(chatId,available.length?`Available sample IDs: ${available.map(a=>a.name).join(', ')}`:'No sample IDs available.');return;
+   const available=availableAccounts();await say(chatId,available.length?`Available ${sandboxMode?'sample ':''}IDs: ${available.map(a=>a.name).join(', ')}`:`No ${sandboxMode?'sample ':''}IDs available.`);return;
   }
  }
  if(/^\/id(?:@\w+)?$/.test(text)){await say(chatId,`Your Telegram numeric ID: ${chatId}`);return;}
+ if(/^\/history(?:@\w+)?$/.test(text)){await showHistory(chatId);return;}
  if(text.startsWith('/support')){await say(chatId,'Contact the admin using the button below.',buttons([[supportButton()],[homeButton]]));return;}
  if(/^\/(start|home|menu)(?:@\w+)?(?:\s.*)?$/.test(text)||text==='🏠 Home'){
   const seen=db.prepare('SELECT chat_id FROM bot_visitors WHERE chat_id=?').get(chatId);
@@ -150,13 +163,14 @@ async function handleCallback(c:any){
   } else if(data==='book'){await showPlans(chatId);
   } else if(data==='availability'){await showAvailability(chatId,c.message.message_id);
   } else if(data==='proofs'){await showProofs(chatId);
+  } else if(data==='history'){await showHistory(chatId);
   } else if(data==='support'){
    await say(chatId,'The admin has not set a support username yet. Please try again later.',buttons([[homeButton]]));
   } else if(data.startsWith('hours:')){
    const hours=Number(data.slice(6));
    if(checkoutUrl){
     const link=new URL('/checkout',checkoutUrl);link.searchParams.set('hours',String(hours));link.searchParams.set('new','1');
-    await say(chatId,`Book ${duration(hours)} through IMB. Enter your name on the checkout page, then continue to secure payment.`,buttons([[{text:'Book through IMB',url:link.toString()}],[homeButton]]));
+    await say(chatId,sandboxMode?`Create a TEST booking for ${duration(hours)} on the preview checkout. No payment is collected.`:`Book ${duration(hours)} through IMB. Enter your name on the checkout page, then continue to secure payment.`,buttons([[{text:sandboxMode?'Open test checkout':'Book through IMB',url:link.toString()}],[homeButton]]));
    }else{
     const order=createOrder(chatId,String(c.from?.username||c.from?.first_name||'customer'),hours);
     await say(chatId,`TEST ORDER ${order.id}\n${duration(order.hours)} · ₹${order.amount}\nNo payment is collected in this test. Tap below to simulate a payment claim.`,buttons([[{text:'Simulate payment claim',callback_data:`claim:${order.id}`}],[homeButton]]));
@@ -176,7 +190,7 @@ async function handleCallback(c:any){
     await say(adminId,delivered?`${id} approved and delivered. Reset scheduled for ${details.order.expires_at}.`:`${id} approved but delivery failed. Account remains reserved; check the dashboard.`);
    }
   } else if(chatId===adminId && data.startsWith('reject:')){
-   rejectOrder(data.slice(7));await say(adminId,'Payment claim rejected.');
+   const rejected=rejectOrder(data.slice(7));await sendCustomerStatus(rejected,'Payment proof rejected');await say(adminId,'Payment claim rejected.');
   }
  }catch(e){await say(chatId,`Could not complete: ${e instanceof Error?e.message:'unknown error'}`);}
 
@@ -184,7 +198,7 @@ async function handleCallback(c:any){
 export function startTestBot(){
  if(!token){console.log('[Bot] Set TELEGRAM_BOT_TOKEN to enable the test bot.');return;}
  if(!adminId)console.log('[Bot] Send /id to the bot, then set TELEGRAM_ADMIN_ID and restart before trying approvals.');
- api('setMyCommands',{commands:[{command:'start',description:'Open booking menu'},{command:'home',description:'Return to home'},{command:'support',description:'Contact admin'}]}).catch(e=>console.error('[Bot] Could not set commands',e));
+ api('setMyCommands',{commands:[{command:'start',description:'Open booking menu'},{command:'home',description:'Return to home'},{command:'history',description:'My test bookings'},{command:'support',description:'Contact admin'}]}).catch(e=>console.error('[Bot] Could not set commands',e));
  api('setChatMenuButton',{menu_button:{type:'commands'}}).catch(e=>console.error('[Bot] Could not set menu button',e));
  active=true;let offset=0;
  (async()=>{while(active){try{const updates=await api('getUpdates',{offset,timeout:20,allowed_updates:['message','callback_query']}) as any[];

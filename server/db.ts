@@ -8,6 +8,9 @@ import path from 'path';
  */
 
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, '..', 'data.db');
+if(process.env.V3_PREVIEW==='true' && (path.basename(DB_PATH)!=='v3-preview.db'||!path.resolve(DB_PATH).includes('flingroulette-v3'))){
+ throw new Error('V3 preview requires an isolated flingroulette-v3/.../v3-preview.db path.');
+}
 
 export const db: any = new DatabaseSync(DB_PATH);
 db.exec('PRAGMA journal_mode=WAL');
