@@ -405,8 +405,8 @@ export default function OrdersPanel({
         <form onSubmit={bookManual} className="space-y-4">
           <p className="text-sm text-slate-600">
             For customers who message you directly. Verify their payment
-            yourself. With a Telegram ID, the bot sends login details automatically. Time
-            starts when you save the booking.
+            yourself. A Telegram ID is optional: without one, share the login
+            privately from Accounts. Time and auto-reset start when you save.
           </p>
           <label className="block text-sm font-medium">
             Customer name
@@ -513,7 +513,7 @@ export default function OrdersPanel({
             disabled={
               busy === "manual" ||
               !manual.accountId ||
-              !manual.telegramChatId ||
+              (preview && !manual.telegramChatId) ||
               !manual.received
             }
           >
