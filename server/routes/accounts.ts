@@ -99,6 +99,7 @@ accountsRouter.patch('/:id', (req: Request, res: Response) => {
 
   const existing = db.prepare('SELECT * FROM accounts WHERE id = ?').get(id) as AccountRow | undefined;
   if (!existing) return res.status(404).json({ error: 'Account not found' });
+  if (existing.sold && typeof password === 'string' && password.trim() && password.trim() !== existing.password) return res.status(409).json({error:'End the active booking before changing this account password.'});
 
   if (process.env.SANDBOX_MODE === 'true' && ((email && !String(email).endsWith('@example.invalid')) || (name && !String(name).startsWith('Sample')))) return res.status(400).json({error:'Only sample accounts can be edited in this sandbox.'});
   const newName = typeof name === 'string' && name.trim() ? name.trim() : existing.name;
@@ -163,6 +164,8 @@ accountsRouter.post('/:id/release', async (req: Request, res: Response) => {
 // Delete an account (also clears any pending schedule)
 accountsRouter.delete('/:id', (req: Request, res: Response) => {
   const { id } = req.params;
+  const reserved=db.prepare('SELECT sold FROM accounts WHERE id=?').get(id) as {sold:number}|undefined;
+  if(reserved?.sold)return res.status(409).json({error:'End the booking and reset its password before deleting this account.'});
   const result = db.prepare('DELETE FROM accounts WHERE id = ?').run(id);
   if (result.changes === 0) return res.status(404).json({ error: 'Account not found' });
   db.prepare('DELETE FROM auto_reset_schedule WHERE account_id = ?').run(id);
@@ -172,6 +175,8 @@ accountsRouter.delete('/:id', (req: Request, res: Response) => {
 // Reset password now (headless Chromium). Logs to history either way.
 accountsRouter.post('/:id/reset-password', async (req: Request, res: Response) => {
   const { id } = req.params;
+  const reserved=db.prepare('SELECT sold FROM accounts WHERE id=?').get(id) as {sold:number}|undefined;
+  if(reserved?.sold)return res.status(409).json({error:'Use End booking or Release to reset a reserved account safely.'});
   const acc = db.prepare('SELECT name FROM accounts WHERE id = ?').get(id) as { name: string } | undefined;
   const result = await resetAccountPassword(id);
 
@@ -193,8 +198,9 @@ accountsRouter.post('/:id/auto-reset', (req: Request, res: Response) => {
   const { id } = req.params;
   const { runAt } = req.body || {};
 
-  const existing = db.prepare('SELECT id FROM accounts WHERE id = ?').get(id);
+  const existing = db.prepare('SELECT id,sold FROM accounts WHERE id = ?').get(id) as {id:string;sold:number}|undefined;
   if (!existing) return res.status(404).json({ error: 'Account not found' });
+  if(existing.sold)return res.status(409).json({error:'The booking controls manage this reserved account’s reset timer.'});
 
   const when = new Date(runAt);
   if (isNaN(when.getTime())) return res.status(400).json({ error: 'Invalid runAt time' });
@@ -211,8 +217,17 @@ accountsRouter.post('/:id/auto-reset', (req: Request, res: Response) => {
 // Cancel a scheduled auto reset
 accountsRouter.delete('/:id/auto-reset', (req: Request, res: Response) => {
   const { id } = req.params;
+  const active=db.prepare('SELECT sold FROM accounts WHERE id=?').get(id) as {sold:number}|undefined;
+  if(active?.sold)return res.status(409).json({error:'Cannot disable reset while the sample account is reserved.'});
   db.prepare('DELETE FROM auto_reset_schedule WHERE account_id = ?').run(id);
   return res.json({ ok: true });
+});
+
+accountsRouter.post('/:id/retry-now',(req:Request,res:Response)=>{
+ const row=db.prepare('SELECT s.status,a.sold FROM auto_reset_schedule s JOIN accounts a ON a.id=s.account_id WHERE s.account_id=?').get(req.params.id) as {status:string;sold:number}|undefined;
+ if(!row||row.status!=='failed'||!row.sold)return res.status(409).json({error:'Only failed resets on reserved accounts can be retried.'});
+ db.prepare("UPDATE auto_reset_schedule SET status='pending',run_at=? WHERE account_id=? AND status='failed'").run(new Date().toISOString(),req.params.id);
+ return res.json({ok:true,message:'Retry queued; status will update shortly.'});
 });
 
 // ── History ──

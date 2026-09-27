@@ -16,6 +16,7 @@ import { db } from './db';
 import {botSettingsRouter} from './routes/botSettings';
 import {checkoutRouter,paymentSettingsRouter} from './routes/checkout';
 import {pushRouter} from './routes/push';
+import {v3OpsRouter} from './routes/v3Ops';
 
 const sandboxMode = process.env.SANDBOX_MODE === 'true';
 const v3Preview = process.env.V3_PREVIEW === 'true';
@@ -43,6 +44,7 @@ app.use('/api', authRouter);              // POST /api/login
 app.use('/api/accounts', accountsRouter); // account CRUD + reset + auto-reset
 app.use('/api/history', historyRouter);   // reset history
 app.use('/api/test-orders', testOrdersRouter);
+app.use('/api/v3/ops',v3OpsRouter);
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 

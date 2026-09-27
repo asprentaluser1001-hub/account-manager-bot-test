@@ -5,6 +5,9 @@ import PaymentSettingsPanel from './PaymentSettingsPanel';
 import { APP_NAME, APP_VERSION, BUILD_NUMBER, COPYRIGHT_OWNER } from './version';
 import Checkout from './Checkout';
 import OverviewPanel from './OverviewPanel';
+import BookingControls from './BookingControls';
+import V3Reports from './V3Reports';
+import PreviewOps from './PreviewOps';
 
 interface Account {
   id: string;
@@ -483,9 +486,15 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
 
   async function cancelAutoReset(id: string) {
     try {
-      await fetch(`/api/accounts/${id}/auto-reset`, { method: 'DELETE', headers: authHeaders() });
+      const response=await fetch(`/api/accounts/${id}/auto-reset`, { method: 'DELETE', headers: authHeaders() });
+      if(!response.ok)throw new Error((await response.json()).error||'Cannot cancel reset');
       await load();
-    } catch { /* ignore */ }
+    } catch (err) {setError(err instanceof Error?err.message:'Cannot cancel reset');}
+  }
+
+  async function retryNow(id:string){
+    try {const response=await fetch(`/api/accounts/${id}/retry-now`,{method:'POST',headers:authHeaders()});if(!response.ok)throw new Error((await response.json()).error||'Retry failed');setResetResult(r=>({...r,[id]:{ok:true,msg:'Retry queued; check the status shortly.'}}));await load();}
+    catch(err){setResetResult(r=>({...r,[id]:{ok:false,msg:err instanceof Error?err.message:'Retry failed'}}));}
   }
 
   async function enablePush(){
@@ -565,6 +574,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
             <PaymentSettingsPanel token={token} />
             <BotSettingsPanel token={token} />
             <SettingsPanel token={token} onLogout={onLogout} onBack={() => setActiveTab('accounts')} />
+            <PreviewOps token={token} />
           </>
         ) : (
         <>
@@ -727,6 +737,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
                             Next <span className="font-medium">{new Date(acc.autoResetAt as string).toLocaleString()}</span>
                           </span>
                         )}
+                        {acc.autoResetStatus==='failed'&&<button onClick={()=>retryNow(acc.id)} className="text-xs font-semibold text-red-700 bg-red-50 border border-red-200 rounded-full px-3 py-1">Retry reset now</button>}
                       </div>
 
                       {/* Reset result */}
@@ -763,6 +774,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
                         {/* Auto reset button */}
                         <button
                           onClick={() => onToggleAuto(acc)}
+                          disabled={acc.sold && autoOn}
                           className={`inline-flex items-center justify-center gap-2 flex-1 px-3 py-2.5 text-sm font-semibold rounded-xl border transition active:scale-[0.98] whitespace-nowrap ${
                             autoOn
                               ? 'text-emerald-700 bg-emerald-50 border-emerald-300 hover:bg-emerald-100'
@@ -770,7 +782,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
                           }`}
                         >
                           <Icon path={ICONS.clock} className="w-4 h-4 shrink-0" />
-                          {autoOn ? 'Auto reset: On' : 'Auto reset'}
+                          {autoOn ? acc.autoResetStatus==='running'?'Reset in progress':acc.autoResetStatus==='failed'?'Reset failed':'Auto reset: On' : 'Auto reset'}
                         </button>
                       </div>
 
@@ -842,10 +854,11 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
         </div>
 
         {activeTab === 'manual' && <OrdersPanel token={token} view="manual" onBookingChanged={load} />}
-        {activeTab === 'finance' && <OrdersPanel token={token} view="finance" />}
+        {activeTab === 'finance' && <><OrdersPanel token={token} view="finance" /><V3Reports token={token} /></>}
 
         {/* ─── Reset History ─────────────────────────────────── */}
         {activeTab === 'history' && <>
+        <BookingControls token={token} onChanged={load} />
         <OrdersPanel token={token} view="history" onBookingChanged={load} />
         <div className="mt-9">
           <div className="flex items-center gap-2 mb-1">

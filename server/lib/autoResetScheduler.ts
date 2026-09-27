@@ -2,7 +2,7 @@ import { db, AutoResetRow } from '../db';
 import { resetAccountPassword } from './passwordReset';
 import { logResetHistory } from './history';
 import { markReset } from './testOrders';
-import { sendAdminBookingEnd, sendAdminResetResult } from './telegramBot';
+import { sendAdminBookingEnd, sendAdminResetResult, sendExpiryReminder } from './telegramBot';
 import { sendBookingEndPush, sendResetResultPush } from '../routes/push';
 
 /**
@@ -105,6 +105,10 @@ async function processSchedule(row: AutoResetRow): Promise<void> {
 
 function tick(): void {
   const now = new Date().toISOString();
+  // Send at most one reminder per sample booking, shortly before expiry.
+  const soon=new Date(Date.now()+15*60_000).toISOString();
+  const reminders=db.prepare("SELECT * FROM test_orders WHERE source='telegram' AND status IN ('approved','delivered') AND order_type='booking' AND expires_at>? AND expires_at<=? AND reminder_notified_at IS NULL LIMIT 30").all(now,soon) as import('./testOrders').TestOrder[];
+  for(const order of reminders)sendExpiryReminder(order).then(sent=>{if(sent)db.prepare('UPDATE test_orders SET reminder_notified_at=? WHERE id=? AND reminder_notified_at IS NULL').run(new Date().toISOString(),order.id)}).catch(e=>log(`reminder failed: ${e}`));
   const due = db
     .prepare(`SELECT account_id, run_at, status, created_at FROM auto_reset_schedule WHERE status = 'pending' AND run_at <= ?`)
     .all(now) as AutoResetRow[];

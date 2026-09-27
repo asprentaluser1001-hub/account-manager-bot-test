@@ -1,98 +1,38 @@
-# FlingRoulette V3 Developer Preview
+# FlingRoulette V3 developer preview
 
-Status: isolated preview scaffold on branch v3/developer-preview.
+This branch (`v3/developer-preview`) is a test-only implementation. It is not a production release and has no real payment or refund capability. The V2 `main` branch and its database/service remain separate.
 
-## Current architecture
+## Preview isolation
 
-- client/: React 18 + TypeScript + Vite dashboard and checkout UI.
-- server/: Node.js 24 + TypeScript + Express API.
-- server/db.ts: local SQLite database selected only by DB_PATH.
-- server/lib/testOrders.ts: sample booking/order state machine and synthetic payment claims.
-- server/lib/autoResetScheduler.ts: scheduled sample reset workflow.
-- server/lib/telegramBot.ts: optional Telegram test bot polling.
-- server/routes/checkout.ts: checkout, payment-proof, and order endpoints.
-- client/src/App.tsx: existing V2 dashboard UI copied unchanged in this branch, with only the required preview banner added through CSS.
-- client/src/Checkout.tsx: existing checkout UI copied unchanged; live gateway access is disabled in V3.
-
-## Isolation contract
-
-| Area | V2 production | V3 developer preview |
+| Area | V2 production | V3 preview |
 |---|---|---|
-| Git ref | main | v3/developer-preview |
-| URL | Existing production URL | Separate preview hostname only |
-| Database | Existing production DB | /opt/flingroulette-v3/server/data/v3-preview.db |
-| Environment | Existing V2 env | server/.env.v3 |
-| Process | Existing V2 service | flingroulette-v3-preview.service |
-| Payment | Existing V2 configuration | PAYMENT_MODE=mock; live IMB blocked |
-| Telegram | Existing V2 bot | Empty or separate test bot token |
-| Accounts | Existing V2 accounts | Auto-created Sample IDs only |
+| Git | `main` | `v3/developer-preview` |
+| Database | Existing V2 database | `/opt/flingroulette-v3/server/data/v3-preview.db` |
+| Environment | Existing V2 environment | `/opt/flingroulette-v3/server/.env.v3` |
+| Service | Existing V2 service | `flingroulette-v3-preview.service` |
+| Payments | Production configuration | `PAYMENT_MODE=mock`; live IMB prohibited |
+| Telegram | Production bot | No token or a *separate* test bot |
+| Accounts | Production accounts | Sample names and `@example.invalid` addresses only |
 
-V3 startup fails if V3_PREVIEW=true is combined with non-sandbox mode, a non-mock payment mode, or an IMB token. No production database path, production secrets, production Telegram token, or production payment token should be copied into the V3 environment.
+Startup fails if V3 preview runs without `SANDBOX_MODE=true`, `PAYMENT_MODE=mock`, a V3-specific database path, or with `IMB_API_TOKEN`. Do not copy V2 database, secrets, payment token, Telegram token or hostname into V3.
 
-## First-preview acceptance checks
+## Implemented test features
 
-1. GET /api/health returns {"ok":true}.
-2. The login page and dashboard retain the current V2 layout.
-3. The banner reads: FlingRoulette Developer Preview V3 — Test Data Only.
-4. The preview database is created at the V3-only path.
-5. The Accounts page contains only Sample ID records.
-6. Adding non-sample accounts is rejected.
-7. Mock checkout creates a test order and never calls IMB.
-8. No V2 service is stopped, restarted, reconfigured, or pointed at the preview database.
-9. The systemd unit runs as a separate service and user.
-10. The preview URL is not the production URL.
+- Liquid-glass dashboard with compact navigation and live booking timers.
+- Admin History: create/claim/approve sample bookings; extend an existing booking by 50 minutes for a manually confirmed ₹50 *test* amount; end early, cancel, or transfer it to a free sample account. The previous account remains reserved until its password reset succeeds. Extend is not a separate customer booking.
+- Reset schedule and retry-now for failed resets; reset history and availability indicators. Reserved accounts cannot have their reset timer disabled, be deleted, or have their password edited directly.
+- Daily/weekly/monthly gross test-revenue summaries, success/failure counts, refund-status tracking and CSV. Gross figures include cancellations; refunds are tracked separately, not deducted or issued.
+- Mock checkout creates a sample web order with **no QR, UPI or gateway payment**. Admin marks a test claim and assigns an account in History. Public order page shows credentials only during the active booking.
+- Optional separate test Telegram bot: order history, sample status, expiry reminder and sample credential delivery. Requires a test bot token and admin ID to actually deliver messages.
+- Preview-only health/disk check, consistent SQLite backup, backup list and booking/refund audit. Git update/restart and rollback stay manual VPS operations, with no privileged web endpoints.
+- Twelve-hour admin sessions, password-change session invalidation, 15-minute sign-in throttling and isolated `.env.v3` password updates.
 
-## V3 feature list for approval
+## Deliberately not live
 
-These are planning items only. They are not implemented in this first preview.
+Automatic paid checkout, real QR transactions, automatic refunds, a production Telegram bot, OS package updates, privileged GitHub deploy, and one-click rollback require separate authorization/integration. This preview must not pretend to receive or refund money. A backup is created in the V3 data directory; it does not replace an off-VPS backup.
 
-### Dashboard and booking controls
+## Validate before using the preview
 
-- New admin dashboard design.
-- Booking extend-time control.
-- End booking early control.
-- Transfer customer to another account.
-- Cancel booking and refund-status state.
-- Improved manual booking with a live timer.
+On a Node.js 24+ development machine, install dependencies in `server` and `client`, run `npm run build` in each, then run `node --test tests/v3.integration.mjs` in `server`. The integration test starts a temporary isolated preview database, exercises the booking lifecycle and backup, then removes the temporary test data.
 
-### Reset and account lifecycle
-
-- Reset attempt history controls.
-- Retry-now control.
-- Reset progress/status display.
-- Clear account-available-again indicator.
-
-### Finance and payments
-
-- Daily, weekly, and monthly revenue reports.
-- Successful versus failed payment reports.
-- Refund tracking.
-- CSV export.
-- QR-only payment flow with an explicit test/live boundary.
-
-### Telegram
-
-- Booking history.
-- Payment-status notifications.
-- Expiry reminders.
-- Automatic credential delivery.
-
-### VPS and operations
-
-- VPS system update controls.
-- GitHub update/deploy button with protected preview/production separation.
-- Logs, backups, health checks, and rollback.
-- Admin audit logs and improved security.
-
-## Deployment note
-
-The repository branch and isolated configuration are prepared, but a preview URL can only be issued after deployment to a separate VPS location/host. The current workspace has no authorized SSH/VPS deployment channel, so production has intentionally not been touched and no URL is claimed here.
-
-Required preview deployment inputs are the preview VPS hostname/IP and an SSH path/account with permission to create:
-
-- /opt/flingroulette-v3
-- the flingroulette-v3 system user
-- the separate systemd unit
-- the separate HTTPS/Cloudflare preview hostname
-
-After deployment, stop for owner approval before implementing any redesign or feature from the list above.
+For the VPS preview, inspect `deploy/README.md`, back up the V3 database first, update only `v3/developer-preview`, rebuild, restart only `flingroulette-v3-preview.service`, then verify `/api/health`, `/api/v3/ops/health` (authenticated), mock checkout and account isolation. Avoid exposing port 4400 without HTTPS/authenticated admin access. A `trycloudflare.com` quick-tunnel address is temporary and cannot be treated as a permanent URL.

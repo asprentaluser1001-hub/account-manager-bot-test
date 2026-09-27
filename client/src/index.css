@@ -50,6 +50,7 @@ body {
 .v3-booking-tabs button.active{background:#dff4ec;color:#114b40;box-shadow:0 2px 10px #145a4120}
 @media(max-width:640px){.v3-shell .admin-tabs{width:100%;max-width:560px;margin:auto}.v3-shell .v3-header>div:last-child{overflow:visible;padding-left:10px;padding-right:10px}.v3-shell .admin-tabs button{min-height:54px;padding:6px 2px;font-size:10px}.v3-booking-tabs button{font-size:11px;padding-inline:5px}}
 .v3-metric:nth-child(3) strong{font-size:clamp(22px,4vw,31px);overflow-wrap:anywhere}
+.v3-control-card{padding:15px;border-radius:24px;background:rgba(255,255,255,.66);border:1px solid #fff}.v3-control-actions{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px}.v3-control-actions button,.v3-transfer button{padding:8px 11px;border:1px solid #bdd3d0;border-radius:999px;color:#145347;font-size:12px;font-weight:650;background:#fff}.v3-control-actions button:disabled,.v3-transfer button:disabled{opacity:.45}.v3-transfer{display:flex;gap:8px;margin-top:10px}.v3-transfer select{flex:1;min-width:0;padding:8px 10px;font-size:12px;border:1px solid #bdd3d0;border-radius:999px}
 
 .qr-actions{display:flex;justify-content:center;align-items:center;gap:12px;margin:-6px auto 16px;color:#8f98a7;font-size:12px}.qr-actions a{color:#ff75aa;text-decoration:underline;font-weight:700}
 

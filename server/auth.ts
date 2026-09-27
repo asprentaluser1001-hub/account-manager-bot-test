@@ -11,12 +11,15 @@ import path from 'path';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-insecure-secret-change-me';
 let ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
-const TOKEN_TTL = '7d';
+const TOKEN_TTL = process.env.V3_PREVIEW === 'true' ? '12h' : '7d';
+const failedLogins = new Map<string,{count:number;until:number}>();
 
 export const authRouter = Router();
 
 authRouter.post('/login', (req: Request, res: Response) => {
   const { password } = req.body || {};
+  const key=req.ip||'unknown',now=Date.now(),attempt=failedLogins.get(key);
+  if(process.env.V3_PREVIEW==='true'&&attempt&&attempt.count>=8&&attempt.until>now)return res.status(429).json({error:'Too many sign-in attempts. Try again in 15 minutes.'});
 
   if (!ADMIN_PASSWORD) {
     return res.status(500).json({ error: 'Server not configured: ADMIN_PASSWORD missing' });
@@ -25,10 +28,12 @@ authRouter.post('/login', (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Password required' });
   }
   if (password !== ADMIN_PASSWORD) {
+    if(process.env.V3_PREVIEW==='true')failedLogins.set(key,{count:attempt&&attempt.until>now?attempt.count+1:1,until:now+15*60_000});
     return res.status(401).json({ error: 'Wrong password' });
   }
+  failedLogins.delete(key);
 
-  const token = jwt.sign({ role: 'admin' }, JWT_SECRET, { expiresIn: TOKEN_TTL });
+  const token = jwt.sign({ role: 'admin' }, JWT_SECRET + ADMIN_PASSWORD, { expiresIn: TOKEN_TTL });
   return res.json({ token });
 });
 
@@ -44,7 +49,7 @@ export function adminAuth(req: Request, res: Response, next: NextFunction) {
   }
 
   try {
-    jwt.verify(token, JWT_SECRET);
+    jwt.verify(token, JWT_SECRET + ADMIN_PASSWORD);
     return next();
   } catch {
     return res.status(401).json({ error: 'Invalid or expired token' });
@@ -63,8 +68,8 @@ authRouter.post('/change-admin-password', adminAuth, (req: Request, res: Respons
   if (typeof currentPassword !== 'string' || currentPassword.length === 0) {
     return res.status(400).json({ error: 'currentPassword is required' });
   }
-  if (typeof newPassword !== 'string' || newPassword.length < 6) {
-    return res.status(400).json({ error: 'newPassword must be at least 6 characters' });
+  if (typeof newPassword !== 'string' || newPassword.length < 12 || /[\r\n]/.test(newPassword)) {
+    return res.status(400).json({ error: 'newPassword must be at least 12 characters and contain no line breaks' });
   }
   if (currentPassword !== ADMIN_PASSWORD) {
     return res.status(401).json({ error: 'Current password is incorrect' });
@@ -74,14 +79,15 @@ authRouter.post('/change-admin-password', adminAuth, (req: Request, res: Respons
   }
 
   // Find and update .env file.
+  const envFile = process.env.V3_PREVIEW === 'true' ? '.env.v3' : '.env';
   const envCandidates = [
-    path.join(__dirname, '..', '.env'),       // prod: server/dist -> server/.env
-    path.join(__dirname, '.env'),             // dev: server/.env
+    path.join(__dirname, '..', envFile),
+    path.join(__dirname, envFile),
   ];
   const envPath = envCandidates.find((p) => fs.existsSync(p));
 
   if (!envPath) {
-    return res.status(500).json({ error: '.env file not found — update ADMIN_PASSWORD manually' });
+    return res.status(500).json({ error: `${envFile} file not found — update ADMIN_PASSWORD manually` });
   }
 
   try {
@@ -91,7 +97,9 @@ authRouter.post('/change-admin-password', adminAuth, (req: Request, res: Respons
     } else {
       content += `\nADMIN_PASSWORD=${newPassword}\n`;
     }
-    fs.writeFileSync(envPath, content, 'utf8');
+    const temporaryPath = `${envPath}.${process.pid}.tmp`;
+    fs.writeFileSync(temporaryPath, content, { encoding: 'utf8', mode: 0o600 });
+    fs.renameSync(temporaryPath, envPath);
 
     // Update in-process so the new password works immediately (no restart needed).
     process.env.ADMIN_PASSWORD = newPassword;

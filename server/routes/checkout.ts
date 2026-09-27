@@ -10,7 +10,8 @@ db.exec(`CREATE TABLE IF NOT EXISTS payment_settings (key TEXT PRIMARY KEY,value
 const getSetting=(key:string)=>(db.prepare('SELECT value FROM payment_settings WHERE key=?').get(key) as {value:string}|undefined)?.value||'';
 const saveSetting=(key:string,value:string)=>db.prepare('INSERT INTO payment_settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(key,value);
 const plans=Object.entries(PRICES).map(([hours,amount])=>({hours:Number(hours),amount}));
-const clientConfig=()=>({brand:getSetting('brand')||'FlingRoulette',payeeName:getSetting('payee_name'),upiId:getSetting('upi_id'),qrDataUrl:getSetting('qr_data_url'),support:getSetting('support'),plans,available:availableAccounts().length>0,gatewayEnabled:isImbConfigured()});
+const mockPayment=()=>process.env.V3_PREVIEW==='true' && process.env.PAYMENT_MODE==='mock';
+const clientConfig=()=>({brand:getSetting('brand')||'FlingRoulette',payeeName:mockPayment()?'':getSetting('payee_name'),upiId:mockPayment()?'':getSetting('upi_id'),qrDataUrl:mockPayment()?'':getSetting('qr_data_url'),support:getSetting('support'),plans,available:availableAccounts().length>0,gatewayEnabled:!mockPayment()&&isImbConfigured(),mockPayment:mockPayment()});
 
 const attempts=new Map<string,{count:number;reset:number}>();
 function limited(req:Request){
@@ -24,10 +25,9 @@ checkoutRouter.get('/config',(_req,res)=>res.json(clientConfig()));
 checkoutRouter.post('/orders',json({limit:'32kb'}),async(req,res)=>{
  try{
   if(limited(req))return res.status(429).json({error:'Too many attempts. Please wait and try again.'});
-  const mockPayment=process.env.V3_PREVIEW==='true' && process.env.PAYMENT_MODE==='mock';
-  if(!mockPayment && !isImbConfigured())return res.status(503).json({error:'IMB payment is temporarily unavailable. Please contact support.'});
+  if(!mockPayment() && !isImbConfigured())return res.status(503).json({error:'IMB payment is temporarily unavailable. Please contact support.'});
   const result=createWebOrder(String(req.body.name||''),'',Number(req.body.hours));
-  if(!mockPayment && isImbConfigured()){
+  if(!mockPayment() && isImbConfigured()){
    try{
     const base=process.env.PUBLIC_CHECKOUT_URL||`${req.protocol}://${req.get('host')}/checkout`;
     const redirect=new URL('/checkout',base);redirect.searchParams.set('order',result.order.id);redirect.searchParams.set('token',result.accessToken);redirect.searchParams.set('amount',String(result.order.amount));redirect.searchParams.set('hours',String(result.order.hours));
@@ -41,7 +41,7 @@ checkoutRouter.post('/orders',json({limit:'32kb'}),async(req,res)=>{
  catch(error){return res.status(400).json({error:error instanceof Error?error.message:'Could not create order'});}
 });
 checkoutRouter.post('/orders/:id/proof',json({limit:'5mb'}),async(req,res)=>{
- try{if(limited(req))return res.status(429).json({error:'Too many attempts. Please wait and try again.'});const order=submitWebProof(req.params.id,String(req.body.accessToken||''),String(req.body.paymentReference||''),String(req.body.proofDataUrl||''));const [adminAlerted,pushAlerts]=await Promise.all([sendAdminClaim(order),sendApprovalPush(order)]);return res.json({status:order.status,adminAlerted,pushAlerts});}
+ try{if(mockPayment())return res.status(403).json({error:'Payment proof is disabled in the test preview; no payment is collected.'});if(limited(req))return res.status(429).json({error:'Too many attempts. Please wait and try again.'});const order=submitWebProof(req.params.id,String(req.body.accessToken||''),String(req.body.paymentReference||''),String(req.body.proofDataUrl||''));const [adminAlerted,pushAlerts]=await Promise.all([sendAdminClaim(order),sendApprovalPush(order)]);return res.json({status:order.status,adminAlerted,pushAlerts});}
  catch(error){return res.status(400).json({error:error instanceof Error?error.message:'Could not submit payment proof'});}
 });
 checkoutRouter.get('/orders/:id',(req,res)=>{
@@ -86,6 +86,7 @@ paymentSettingsRouter.get('/',(_req,res)=>res.json(clientConfig()));
 paymentSettingsRouter.put('/',json({limit:'5mb'}),(req,res)=>{
  try{
   const brand=String(req.body.brand||'FlingRoulette').trim(),payeeName=String(req.body.payeeName||'').trim(),upiId=String(req.body.upiId||'').trim(),support=String(req.body.support||'').trim(),qrDataUrl=String(req.body.qrDataUrl||'');
+  if(mockPayment()&&(payeeName||upiId||qrDataUrl))throw new Error('Real payment details cannot be configured in the V3 test preview.');
   if(brand.length<2||brand.length>40)throw new Error('Brand name must be 2–40 characters');
   if(payeeName.length>80||support.length>100)throw new Error('Payment details are too long');
   if(upiId&&!/^[\w.\-]+@[\w.\-]+$/.test(upiId))throw new Error('Enter a valid UPI ID');

@@ -83,8 +83,8 @@ export function publicWebOrder(id:string,accessToken:string){
  const order=db.prepare("SELECT id,username,hours,amount,status,created_at,claimed_at,approved_at,expires_at,error,gateway_payment_url AS payment_url,gateway_phonepe_link AS phonepe_link,gateway_paytm_link AS paytm_link,gateway_bhim_link AS bhim_link FROM test_orders WHERE id=? AND access_token=? AND source IN ('web','telegram')").get(id,accessToken) as (Partial<TestOrder>&{payment_url?:string;phonepe_link?:string;paytm_link?:string;bhim_link?:string})|undefined;
  if(!order)throw new Error('Order not found');
  let credentials:null|{email:string;password:string}=null;
- if(['approved','delivered','delivery_failed'].includes(String(order.status))){
-  credentials=db.prepare('SELECT a.email,a.password FROM accounts a JOIN test_orders o ON o.account_id=a.id WHERE o.id=? AND o.access_token=?').get(id,accessToken) as {email:string;password:string}|undefined||null;
+ if(['approved','delivered','delivery_failed'].includes(String(order.status))&&order.expires_at&&new Date(order.expires_at).getTime()>Date.now()){
+  credentials=db.prepare('SELECT a.email,a.password FROM accounts a JOIN test_orders o ON o.account_id=a.id WHERE o.id=? AND o.access_token=? AND a.sold=1').get(id,accessToken) as {email:string;password:string}|undefined||null;
  }
  return {...order,credentials};
 }
@@ -131,10 +131,10 @@ export function sandboxReset(accountId:string):{success:boolean;newPassword?:str
  return {success:true,newPassword};
 }
 export function summary(){
- const paid=db.prepare("SELECT COUNT(*) as sales,COALESCE(SUM(amount),0) as revenue FROM test_orders WHERE status IN ('approved','delivered','expired','delivery_failed','reset_failed') AND approved_at >= '2026-09-25T18:30:00.000Z'").get() as {sales:number;revenue:number};
+ const paid=db.prepare("SELECT COUNT(*) as sales,COALESCE(SUM(amount),0) as revenue FROM test_orders WHERE status IN ('approved','delivered','expired','delivery_failed','reset_failed','cancelled') AND approved_at >= '2026-09-25T18:30:00.000Z'").get() as {sales:number;revenue:number};
  return {...paid,bookings:(db.prepare("SELECT COUNT(*) as n FROM test_orders").get() as {n:number}).n,customers:(db.prepare("SELECT COUNT(DISTINCT chat_id) as n FROM test_orders").get() as {n:number}).n,pending:db.prepare("SELECT COUNT(*) as n FROM test_orders WHERE status='payment_claimed'").get() as {n:number},available:availableAccounts().length};
 }
 export function finance(){
- const rows=db.prepare("SELECT date(approved_at,'+330 minutes') AS day, COUNT(*) AS bookings, SUM(amount) AS amount FROM test_orders WHERE status IN ('approved','delivered','expired','delivery_failed','reset_failed') AND approved_at >= '2026-09-25T18:30:00.000Z' GROUP BY day ORDER BY day DESC").all() as Array<{day:string;bookings:number;amount:number}>;
+ const rows=db.prepare("SELECT date(approved_at,'+330 minutes') AS day, COUNT(*) AS bookings, SUM(amount) AS amount FROM test_orders WHERE status IN ('approved','delivered','expired','delivery_failed','reset_failed','cancelled') AND approved_at >= '2026-09-25T18:30:00.000Z' GROUP BY day ORDER BY day DESC").all() as Array<{day:string;bookings:number;amount:number}>;
  return {days:rows,cutoff:'2026-09-26'};
 }
