@@ -25,6 +25,8 @@ test('V3 isolated mock checkout and booking lifecycle',async()=>{
   assert.equal((await call(`/api/test-orders/${orderId}/extend`,'POST',{paymentConfirmed:true},token)).status,400);
   assert.equal((await call(`/api/test-orders/${orderId}/claim`,'POST',{},token)).status,200);
   const available=(await call('/api/test-orders','GET',undefined,token)).data.available;
+  const invalidManual=await call('/api/test-orders/manual','POST',{name:'Manual Customer',contact:'',telegramChatId:'1234567',hours:1,amount:100,accountId:available[0].id},token);
+  assert.equal(invalidManual.status,400);assert.match(invalidManual.data.error,/start the Telegram bot/);
   const approved=await call(`/api/test-orders/${orderId}/approve`,'POST',{accountId:available[0].id},token);assert.equal(approved.status,200);assert.equal(approved.data.delivered,true);
   const wrongExtension=await call(`/api/test-orders/${orderId}/extend`,'POST',{paymentConfirmed:false},token);assert.equal(wrongExtension.status,400);
   const extension=await call(`/api/test-orders/${orderId}/extend`,'POST',{paymentConfirmed:true},token);assert.equal(extension.status,200);assert.equal(new Date(extension.data.order.expires_at)-new Date(approved.data.order.expires_at),50*60_000);
@@ -33,6 +35,16 @@ test('V3 isolated mock checkout and booking lifecycle',async()=>{
   assert.equal((await call(`/api/accounts/${oldAccount.id}/auto-reset`,'DELETE',undefined,token)).status,409);
   assert.equal((await call(`/api/accounts/${oldAccount.id}`,'DELETE',undefined,token)).status,409);
   assert.equal((await call(`/api/test-orders/${orderId}/cancel`,'POST',{},token)).status,200);
+  assert.equal((await call('/api/test-orders/history/hide','POST',{ids:[orderId]},token)).status,400);
+  const rejected=await call('/api/test-orders/demo','POST',{chatId:'888111',username:'Other Customer',hours:1},token);
+  assert.equal(rejected.status,201);
+  assert.equal((await call(`/api/test-orders/${rejected.data.order.id}/claim`,'POST',{},token)).status,200);
+  assert.equal((await call(`/api/test-orders/${rejected.data.order.id}/reject`,'POST',{},token)).status,200);
+  const beforeHide=await call('/api/test-orders','GET',undefined,token);
+  assert.equal((await call('/api/test-orders/history/hide','POST',{ids:[rejected.data.order.id]},token)).status,200);
+  const afterHide=await call('/api/test-orders','GET',undefined,token);
+  assert.ok(!afterHide.data.orders.some(order=>order.id===rejected.data.order.id));
+  assert.equal(afterHide.data.summary.bookings,beforeHide.data.summary.bookings);
   assert.equal((await call(`/api/test-orders/${orderId}/refund`,'PATCH',{status:'requested',note:'Test tracking'},token)).status,200);
   const report=await call('/api/test-orders/v3/finance','GET',undefined,token);assert.equal(report.status,200);assert.ok(report.data.total>=150);assert.ok(report.data.refunds.some(refund=>refund.order_id===orderId));
   const health=await call('/api/v3/ops/health','GET',undefined,token);assert.equal(health.data.ok,true);

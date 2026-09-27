@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from 'crypto';
 import { db } from '../db';
 
-export type TestOrder = { id:string; chat_id:string; username:string; hours:number; amount:number; status:string; account_id:string|null; created_at:string; claimed_at:string|null; approved_at:string|null; expires_at:string|null; delivered_at:string|null; error:string|null; source:string; access_token:string|null; customer_contact:string|null; payment_reference:string|null; proof_data_url:string|null };
+export type TestOrder = { id:string; chat_id:string; username:string; hours:number; amount:number; status:string; account_id:string|null; created_at:string; claimed_at:string|null; approved_at:string|null; expires_at:string|null; delivered_at:string|null; error:string|null; source:string; access_token:string|null; customer_contact:string|null; payment_reference:string|null; proof_data_url:string|null; history_hidden:number };
 export const PRICES: Record<number,number> = {1:100,2:150,3:200,168:750,720:1800};
 
 db.exec(`CREATE TABLE IF NOT EXISTS test_orders (
@@ -37,7 +37,24 @@ export function claimGatewayPayment(id:string,utr:string|null){
  return db.prepare("UPDATE test_orders SET status='payment_claimed',claimed_at=?,payment_reference=? WHERE id=? AND source='web' AND status='awaiting_payment_claim'").run(new Date().toISOString(),utr,id).changes>0;
 }
 export function getOrder(id:string):TestOrder|undefined {return db.prepare('SELECT * FROM test_orders WHERE id = ?').get(id) as TestOrder|undefined;}
-export function recentOrders():TestOrder[]{return db.prepare('SELECT * FROM test_orders ORDER BY created_at DESC LIMIT 200').all() as TestOrder[];}
+export function recentOrders():TestOrder[]{return db.prepare('SELECT * FROM test_orders WHERE history_hidden=0 ORDER BY created_at DESC LIMIT 200').all() as TestOrder[];}
+if(!(db.prepare('PRAGMA table_info(test_orders)').all() as Array<{name:string}>).some(column=>column.name==='history_hidden'))db.exec('ALTER TABLE test_orders ADD COLUMN history_hidden INTEGER NOT NULL DEFAULT 0');
+export function hideOrderHistory(ids:string[]):number {
+ if(!Array.isArray(ids)||!ids.length||ids.length>200||ids.some(id=>typeof id!=='string'||!/^(BOT|WEB|MAN|EXT)-[A-F0-9]{8}$/.test(id)))throw new Error('Select valid booking history entries');
+ return db.transaction(()=>{
+  const unique=[...new Set(ids)];
+  const orders=unique.map(id=>getOrder(id));
+  if(orders.some(order=>!order||order.history_hidden))throw new Error('Refresh history and select existing entries');
+  for(const order of orders){
+   if(!['expired','rejected','payment_gateway_error','reset_failed','cancelled'].includes(order!.status)||
+     (order!.account_id&& (db.prepare('SELECT sold FROM accounts WHERE id=?').get(order!.account_id) as {sold:number}|undefined)?.sold))
+     throw new Error('Only finished bookings with released accounts can be removed from history');
+  }
+  const update=db.prepare('UPDATE test_orders SET history_hidden=1 WHERE id=? AND history_hidden=0');
+  for(const id of unique)update.run(id);
+  return unique.length;
+ })();
+}
 export function createOrder(chatId:string,username:string,hours:number):TestOrder {
  if (!PRICES[hours] || !/^\d{1,20}$/.test(chatId) || username.length > 64) throw new Error('Invalid order');
  if(!availableAccounts().length) throw new Error('No IDs are available right now. Please try again later or contact support.');
@@ -53,16 +70,18 @@ export function createWebOrder(name:string,contact:string,hours:number):{order:T
  db.prepare("INSERT INTO test_orders (id,chat_id,username,hours,amount,status,created_at,source,access_token,customer_contact) VALUES (?,?,?,?,?,?,?,'web',?,?)").run(id,'web',name,hours,PRICES[hours],'awaiting_payment_claim',now,accessToken,contact);
  return {order:getOrder(id)!,accessToken};
 }
-export function createManualBooking(name:string,contact:string,hours:number,amount:number,accountId:string):TestOrder {
+export function createManualBooking(name:string,contact:string,hours:number,amount:number,accountId:string,chatId:string):TestOrder {
  name=name.trim();contact=contact.trim();
  if(name.length<2||name.length>64||contact.length>100||!PRICES[hours]||!Number.isSafeInteger(amount)||amount<0||amount>100000)throw new Error('Enter a valid customer, duration and amount');
+ if(!/^\d{1,20}$/.test(chatId)||!db.prepare('SELECT chat_id FROM bot_visitors WHERE chat_id=?').get(chatId))throw new Error('Ask the customer to start the Telegram bot and send you their /id number');
+ if(!process.env.TELEGRAM_BOT_TOKEN)throw new Error('Telegram bot is not configured');
  const id='MAN-'+randomUUID().slice(0,8).toUpperCase(),now=new Date(),ends=new Date(now.getTime()+hours*3600000).toISOString();
  return db.transaction(()=>{
   if(!availableAccounts().some(account=>account.id===accountId))throw new Error('Account is unavailable');
   const sold=db.prepare('UPDATE accounts SET sold=1,sold_until=? WHERE id=? AND sold=0').run(ends,accountId);
   if(!sold.changes)throw new Error('Account is already in use');
   db.prepare("INSERT INTO auto_reset_schedule(account_id,run_at,status,created_at) VALUES (?,?,'pending',?) ON CONFLICT(account_id) DO UPDATE SET run_at=excluded.run_at,status='pending',created_at=excluded.created_at").run(accountId,ends,now.toISOString());
-  db.prepare("INSERT INTO test_orders(id,chat_id,username,hours,amount,status,account_id,created_at,approved_at,expires_at,source,customer_contact) VALUES (?,?,?,?,?,'delivered',?,?,?,?, 'manual',?)").run(id,'manual',name,hours,amount,accountId,now.toISOString(),now.toISOString(),ends,contact||null);
+  db.prepare("INSERT INTO test_orders(id,chat_id,username,hours,amount,status,account_id,created_at,approved_at,expires_at,source,customer_contact) VALUES (?,?,?,?,?,'approved',?,?,?,?, 'manual',?)").run(id,chatId,name,hours,amount,accountId,now.toISOString(),now.toISOString(),ends,contact||null);
   return getOrder(id)!;
  })();
 }

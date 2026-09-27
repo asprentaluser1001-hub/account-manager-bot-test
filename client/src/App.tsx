@@ -7,7 +7,6 @@ import Checkout from './Checkout';
 import OverviewPanel from './OverviewPanel';
 import BookingControls from './BookingControls';
 import V3Reports from './V3Reports';
-import PreviewOps from './PreviewOps';
 
 interface Account {
   id: string;
@@ -559,8 +558,8 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
         </div>
         <div className="max-w-3xl mx-auto px-4 sm:px-5 pb-3">
           <nav className="admin-tabs" aria-label="Dashboard sections">
-            {([['overview','Home','home'],['history','Bookings','bookings'],['accounts','Accounts','accounts'],['finance','Reports','reports'],['settings','More','more']] as const).map(([id,label,icon]) => (
-              <button key={id} onClick={() => setActiveTab(id)} aria-current={(id === 'history' ? ['manual','history'].includes(activeTab) : activeTab === id) ? 'page' : undefined} className={(id === 'history' ? ['manual','history'].includes(activeTab) : activeTab === id) ? 'active' : ''}><Icon path={ICONS[icon]} className="w-5 h-5" /><span>{label}</span></button>
+            {([['overview','Home','home'],['manual','Bookings','bookings'],['accounts','Accounts','accounts'],['finance','Reports','reports'],['settings','More','more']] as const).map(([id,label,icon]) => (
+              <button key={id} onClick={() => setActiveTab(id)} aria-current={(id === 'manual' ? ['manual','history'].includes(activeTab) : activeTab === id) ? 'page' : undefined} className={(id === 'manual' ? ['manual','history'].includes(activeTab) : activeTab === id) ? 'active' : ''}><Icon path={ICONS[icon]} className="w-5 h-5" /><span>{label}</span></button>
             ))}
           </nav>
         </div>
@@ -568,13 +567,12 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
 
       <main className="v3-main max-w-3xl mx-auto px-4 sm:px-5 py-6">
         {pushMessage&&<div className={`mb-4 rounded-xl border px-3.5 py-2.5 text-sm ${pushState==='on'?'border-emerald-200 bg-emerald-50 text-emerald-700':'border-amber-200 bg-amber-50 text-amber-800'}`}>{pushMessage}</div>}
-        {(['manual','history'] as const).includes(activeTab as 'manual'|'history') && <nav className="v3-booking-tabs" aria-label="Booking tools">{([['history','History'],['manual','Manual booking']] as const).map(([id,label])=><button key={id} onClick={()=>setActiveTab(id)} className={activeTab===id?'active':''} aria-current={activeTab===id?'page':undefined}>{label}</button>)}</nav>}
+        {(['manual','history'] as const).includes(activeTab as 'manual'|'history') && <nav className="v3-booking-tabs" aria-label="Booking tools">{([['manual','Manual booking'],['history','History']] as const).map(([id,label])=><button key={id} onClick={()=>setActiveTab(id)} className={activeTab===id?'active':''} aria-current={activeTab===id?'page':undefined}>{label}</button>)}</nav>}
         {activeTab === 'overview' ? <OverviewPanel token={token} accounts={accounts} onNavigate={setActiveTab} /> : activeTab === 'settings' ? (
           <>
             <PaymentSettingsPanel token={token} />
             <BotSettingsPanel token={token} />
             <SettingsPanel token={token} onLogout={onLogout} onBack={() => setActiveTab('accounts')} />
-            <PreviewOps token={token} />
           </>
         ) : (
         <>
