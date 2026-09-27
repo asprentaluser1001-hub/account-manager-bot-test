@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
-/* The preview warning remains visible before login and on every page. */
-#root::before{content:"⚠  FlingRoulette Developer Preview V3 — Test Data Only";display:block;position:relative;z-index:30;background:#ffe2a2;color:#322408;text-align:center;font-size:12px;font-weight:700;letter-spacing:.01em;padding:10px 12px;line-height:1.35;}
+/* Show the warning only when the API confirms mock payment mode. */
+html.preview-mode #root::before{content:"⚠  FlingRoulette Developer Preview V3 — Test Data Only";display:block;position:relative;z-index:30;background:#ffe2a2;color:#322408;text-align:center;font-size:12px;font-weight:700;letter-spacing:.01em;padding:10px 12px;line-height:1.35;}
 
 /* Light theme, matching the FlingBoss admin dashboard look. */
 body {
