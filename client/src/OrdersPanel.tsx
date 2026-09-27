@@ -19,6 +19,7 @@ type Order = {
   customer_contact: string | null;
   payment_reference: string | null;
   proof_data_url: string | null;
+  has_proof?: number;
   order_type?: string;
   parent_order_id?: string | null;
 };
@@ -373,6 +374,7 @@ export default function OrdersPanel({
               {approvals.map((order) => (
                 <ApprovalCard
                   key={order.id}
+                  token={token}
                   order={order}
                   available={data?.available || []}
                   accountId={accountByOrder[order.id] || ""}
@@ -619,6 +621,7 @@ export default function OrdersPanel({
                 {approvals.map((order) => (
                   <ApprovalCard
                     key={order.id}
+                    token={token}
                     order={order}
                     available={data?.available || []}
                     accountId={accountByOrder[order.id] || ""}
@@ -737,6 +740,7 @@ export default function OrdersPanel({
 
 function ApprovalCard({
   order,
+  token,
   available,
   accountId,
   busy,
@@ -745,6 +749,7 @@ function ApprovalCard({
   onReject,
 }: {
   order: Order;
+  token: string;
   available: { id: string; name: string }[];
   accountId: string;
   busy: boolean;
@@ -752,6 +757,21 @@ function ApprovalCard({
   onApprove: () => void;
   onReject: () => void;
 }) {
+  const [proof, setProof] = useState<string | null>(null);
+  const [proofError, setProofError] = useState('');
+  const [proofLoading, setProofLoading] = useState(false);
+  async function showProof() {
+    setProofLoading(true);
+    setProofError('');
+    try {
+      const response = await fetch(`/api/test-orders/${encodeURIComponent(order.id)}/proof`, {headers: {Authorization: `Bearer ${token}`}});
+      if (!response.ok) throw new Error('Could not load payment proof');
+      const body = await response.json();
+      setProof(body.proofDataUrl);
+    } catch (error) {
+      setProofError(error instanceof Error ? error.message : 'Could not load payment proof');
+    } finally { setProofLoading(false); }
+  }
   return (
     <article className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
       <div className="flex items-start justify-between gap-3">
@@ -770,19 +790,22 @@ function ApprovalCard({
         <StatusPill status={order.status} />
       </div>
       <div className="mt-3 flex items-center gap-3 rounded-xl bg-white border border-slate-200 p-2.5">
-        {order.proof_data_url ? (
-          <a href={order.proof_data_url} target="_blank" rel="noreferrer">
+        {proof ? (
+          <a href={proof} target="_blank" rel="noreferrer">
             <img
-              src={order.proof_data_url}
+              src={proof}
               alt="Payment proof"
               className="h-14 w-14 rounded-lg object-cover border border-slate-100"
             />
           </a>
+        ) : order.has_proof ? (
+          <button type="button" onClick={showProof} disabled={proofLoading} className="h-14 w-20 rounded-lg border border-slate-200 text-xs text-slate-700 disabled:opacity-50">{proofLoading ? 'Loading…' : 'View proof'}</button>
         ) : (
           <div className="grid h-14 w-14 place-items-center rounded-lg bg-slate-100 text-xs text-slate-400">
             No image
           </div>
         )}
+        {proofError && <span role="alert" className="text-xs text-red-700">{proofError}</span>}
         <div className="min-w-0">
           <p className="text-xs font-medium text-slate-500">
             Payment reference
