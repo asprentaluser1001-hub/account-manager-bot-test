@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from 'crypto';
 import { db } from '../db';
 
-export type TestOrder = { id:string; chat_id:string; username:string; hours:number; amount:number; status:string; account_id:string|null; created_at:string; claimed_at:string|null; approved_at:string|null; expires_at:string|null; delivered_at:string|null; error:string|null; source:string; access_token:string|null; customer_contact:string|null; payment_reference:string|null; proof_data_url:string|null; history_hidden:number };
+export type TestOrder = { id:string; chat_id:string; username:string; hours:number; amount:number; status:string; account_id:string|null; created_at:string; claimed_at:string|null; approved_at:string|null; expires_at:string|null; delivered_at:string|null; error:string|null; source:string; access_token:string|null; customer_contact:string|null; payment_reference:string|null; proof_data_url:string|null; has_proof?:number; history_hidden:number };
 export const PRICES: Record<number,number> = {1:100,2:150,3:200,168:750,720:1800};
 
 db.exec(`CREATE TABLE IF NOT EXISTS test_orders (
@@ -39,7 +39,7 @@ export function claimGatewayPayment(id:string,utr:string|null){
  return db.prepare("UPDATE test_orders SET status='payment_claimed',claimed_at=?,payment_reference=? WHERE id=? AND source='web' AND status='awaiting_payment_claim'").run(new Date().toISOString(),utr,id).changes>0;
 }
 export function getOrder(id:string):TestOrder|undefined {return db.prepare('SELECT * FROM test_orders WHERE id = ?').get(id) as TestOrder|undefined;}
-export function recentOrders():TestOrder[]{return db.prepare('SELECT * FROM test_orders WHERE history_hidden=0 ORDER BY created_at DESC LIMIT 200').all() as TestOrder[];}
+export function recentOrders():TestOrder[]{return db.prepare(`SELECT id,chat_id,username,hours,amount,status,account_id,created_at,claimed_at,approved_at,expires_at,delivered_at,error,source,customer_contact,payment_reference,order_type,parent_order_id,history_hidden,CASE WHEN proof_data_url IS NOT NULL AND length(proof_data_url)>0 THEN 1 ELSE 0 END AS has_proof FROM test_orders WHERE history_hidden=0 ORDER BY created_at DESC LIMIT 200`).all() as TestOrder[];}
 if(!(db.prepare('PRAGMA table_info(test_orders)').all() as Array<{name:string}>).some(column=>column.name==='history_hidden'))db.exec('ALTER TABLE test_orders ADD COLUMN history_hidden INTEGER NOT NULL DEFAULT 0');
 export function hideOrderHistory(ids:string[]):number {
  if(!Array.isArray(ids)||!ids.length||ids.length>200||ids.some(id=>typeof id!=='string'||!/^(?:BOT|WEB|MAN|EXT|MAN-EXT)-[A-F0-9]{8}$/.test(id)))throw new Error('Select valid booking history entries');
