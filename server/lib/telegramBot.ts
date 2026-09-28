@@ -108,6 +108,11 @@ export async function sendAdminBookingRecorded(alert:{title:string;body:string})
  try {await say(adminId,`${alert.title}\n${alert.body}`);return true;}
  catch(e){console.error('[Bot] Booking alert failed',e);return false;}
 }
+export async function sendAdminExtensionRequest(order:TestOrder){
+ if(!token||!adminId)return false;
+ try{await say(adminId,`Extension requested · ₹50\n${order.username} · ${order.id}\nConfirm payment before using +50 min in Bookings.`);return true;}
+ catch(error){console.error('[Bot] Extension request alert failed',error);return false;}
+}
 export async function sendAdminBookingEnd(order:TestOrder){
  if(!token||!adminId)return false;
  try{await say(adminId,`Booking time ended\n${order.username} · ${order.id}\nPassword reset is starting. Check Accounts for the result.`);return true;}
@@ -201,7 +206,12 @@ export function startTestBot(){
  if(!token){console.log('[Bot] Set TELEGRAM_BOT_TOKEN to enable the test bot.');return;}
  if(!adminId)console.log('[Bot] Send /id to the bot, then set TELEGRAM_ADMIN_ID and restart before trying approvals.');
  api('setMyCommands',{commands:[{command:'start',description:'Open booking menu'},{command:'home',description:'Return to home'},{command:'support',description:'Contact admin'}]}).catch(e=>console.error('[Bot] Could not set commands',e));
- api('setChatMenuButton',{menu_button:{type:'commands'}}).catch(e=>console.error('[Bot] Could not set menu button',e));
+ const miniUrl=process.env.TELEGRAM_MINI_APP_URL?.trim();
+ if(miniUrl){
+  try{const url=new URL(miniUrl);if(url.protocol!=='https:'||url.pathname!=='/miniapp')throw new Error('Use an HTTPS URL ending in /miniapp');
+   api('setChatMenuButton',{menu_button:{type:'web_app',text:'Open FlingRoulette',web_app:{url:miniUrl}}}).catch(e=>console.error('[Bot] Could not set Mini App menu',e));
+  }catch(e){console.error('[Bot] Invalid TELEGRAM_MINI_APP_URL',e);}
+ }else api('setChatMenuButton',{menu_button:{type:'commands'}}).catch(e=>console.error('[Bot] Could not set menu button',e));
  active=true;let offset=0;
  (async()=>{while(active){try{const updates=await api('getUpdates',{offset,timeout:20,allowed_updates:['message','callback_query']}) as any[];
   for(const u of updates){offset=Math.max(offset,u.update_id+1);try{if(u.message)await handleMessage(u.message);if(u.callback_query)await handleCallback(u.callback_query);}catch(e){console.error('[Bot] Update error',e);}}

@@ -4,6 +4,7 @@ import {adminAuth} from '../auth';
 import {activeAccounts,approveOrder,availableAccounts,claimPayment,createManualBooking,createManualExtension,createOrder,finance,getOrder,hideOrderHistory,markDelivered,markDeliveryFailed,recentOrders,rejectOrder,summary} from '../lib/testOrders';
 import {sendAdminClaim,sendCustomerDelivery,sendCustomerStatus} from '../lib/telegramBot';
 import {notifyBookingRecorded} from '../lib/bookingNotifications';
+import {fulfillMiniAppExtension} from '../lib/miniAppExtensions';
 import {auditLog,bookingEvents,endBooking,extendBooking,financeReport,refundStates,setRefund,transferBooking} from '../lib/v3Features';
 export const testOrdersRouter=Router();testOrdersRouter.use(adminAuth);
 const fail=(res:Response,e:unknown)=>res.status(400).json({error:e instanceof Error?e.message:'Request failed'});
@@ -14,7 +15,7 @@ testOrdersRouter.get('/v3/finance',(_req,res)=>res.json(financeReport()));
 testOrdersRouter.get('/v3/audit',(_req,res)=>res.json({entries:auditLog()}));
 testOrdersRouter.get('/v3/refunds',(_req,res)=>res.json({refunds:refundStates()}));
 testOrdersRouter.get('/:id/events',(req,res)=>res.json({events:bookingEvents(req.params.id)}));
-testOrdersRouter.post('/:id/extend',(req,res)=>{try{if(req.body?.paymentConfirmed!==true)throw new Error('Verify the ₹50 payment before extending');const order=extendBooking(req.params.id);void notifyBookingRecorded(order,true);res.json({order})}catch(e){fail(res,e)}});
+testOrdersRouter.post('/:id/extend',(req,res)=>{try{if(req.body?.paymentConfirmed!==true)throw new Error('Verify the ₹50 payment before extending');const order=extendBooking(req.params.id);fulfillMiniAppExtension(order.id);void notifyBookingRecorded(order,true);res.json({order})}catch(e){fail(res,e)}});
 testOrdersRouter.post('/:id/end',(req,res)=>{try{res.json({order:endBooking(req.params.id,'end_early')})}catch(e){fail(res,e)}});
 testOrdersRouter.post('/:id/cancel',(req,res)=>{try{res.json({order:endBooking(req.params.id,'cancel')})}catch(e){fail(res,e)}});
 testOrdersRouter.post('/:id/transfer',async(req,res)=>{try{const order=transferBooking(req.params.id,String(req.body?.accountId||''));let delivered=false;if(order.source==='telegram'){
@@ -40,4 +41,8 @@ testOrdersRouter.post('/manual-extension',(req,res)=>{try{
 testOrdersRouter.post('/demo',async(req,res)=>{try{if(process.env.V3_PREVIEW!=='true')return res.status(403).json({error:'Test orders are disabled in production'});const order=createOrder(String(req.body.chatId||'999001'),String(req.body.username||'sample_customer'),Number(req.body.hours||1));res.status(201).json({order});}catch(e){fail(res,e)}});
 testOrdersRouter.post('/:id/claim',async(req,res)=>{try{if(process.env.V3_PREVIEW!=='true')return res.status(403).json({error:'Test claims are disabled in production; payment must be verified by IMB'});const existing=getOrder(req.params.id);if(!existing)throw new Error('Booking not found');const order=claimPayment(req.params.id,existing.chat_id);await sendAdminClaim(order).catch(()=>{});res.json({order});}catch(e){fail(res,e)}});
 testOrdersRouter.post('/:id/reject',async(req,res)=>{try{const order=rejectOrder(req.params.id);await sendCustomerStatus(order,'Payment proof rejected').catch(()=>{});res.json({order})}catch(e){fail(res,e)}});
-testOrdersRouter.post('/:id/approve',async(req,res)=>{try{const details=approveOrder(req.params.id,String(req.body.accountId));if(details.order.source==='web'){markDelivered(req.params.id);const order=getOrder(req.params.id)!;void notifyBookingRecorded(order);return res.json({order,delivered:true});}const delivered=await sendCustomerDelivery(details.order,details.email,details.password);if(delivered)markDelivered(req.params.id);else markDeliveryFailed(req.params.id,'Telegram delivery unavailable; account stays reserved.');const order=getOrder(req.params.id)!;void notifyBookingRecorded(order);return res.json({order,delivered});}catch(e){return fail(res,e)}});
+testOrdersRouter.post('/:id/approve',async(req,res)=>{try{const details=approveOrder(req.params.id,String(req.body.accountId));if(details.order.source==='web'){
+  markDelivered(req.params.id);
+  if(/^\d{1,16}$/.test(details.order.chat_id))void sendCustomerDelivery(details.order,details.email,details.password).catch(()=>false);
+  const order=getOrder(req.params.id)!;void notifyBookingRecorded(order);return res.json({order,delivered:true});
+ }const delivered=await sendCustomerDelivery(details.order,details.email,details.password);if(delivered)markDelivered(req.params.id);else markDeliveryFailed(req.params.id,'Telegram delivery unavailable; account stays reserved.');const order=getOrder(req.params.id)!;void notifyBookingRecorded(order);return res.json({order,delivered});}catch(e){return fail(res,e)}});

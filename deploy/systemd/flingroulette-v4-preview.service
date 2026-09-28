@@ -1,0 +1,22 @@
+[Unit]
+Description=FlingRoulette V4 Developer Preview (test data only)
+After=network.target
+
+[Service]
+Type=simple
+User=flingroulette-v4
+Group=flingroulette-v4
+WorkingDirectory=/opt/flingroulette-v4/server
+EnvironmentFile=/opt/flingroulette-v4/server/.env.v4
+ExecStart=/usr/bin/node /opt/flingroulette-v4/server/dist/index.js
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/flingroulette-v4/server/data
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

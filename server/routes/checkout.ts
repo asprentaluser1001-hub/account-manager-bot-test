@@ -2,7 +2,7 @@ import {Router,json,urlencoded,Request} from 'express';
 import {adminAuth} from '../auth';
 import {approveOrder,availableAccounts,claimGatewayPayment,createWebOrder,markDelivered,markGatewayError,PRICES,publicWebOrder,saveGatewayLinks,submitWebProof,getOrder} from '../lib/testOrders';
 import {db} from '../db';
-import {sendAdminClaim} from '../lib/telegramBot';
+import {sendAdminClaim,sendCustomerDelivery} from '../lib/telegramBot';
 import {sendApprovalPush} from './push';
 import {notifyBookingRecorded} from '../lib/bookingNotifications';
 import {checkImbOrder,createImbOrder,isImbConfigured} from '../lib/imbPayment';
@@ -60,7 +60,7 @@ async function confirmImbPayment(orderId:string){
  const current=getOrder(orderId)!;
  if(!newlyClaimed&&current.status!=='payment_claimed')return {alreadyProcessed:true};
  for(const account of availableAccounts()){
-  try{approveOrder(orderId,account.id);markDelivered(orderId);void notifyBookingRecorded(getOrder(orderId)!);return {alreadyProcessed:false,delivered:true};}
+  try{const details=approveOrder(orderId,account.id);markDelivered(orderId);if(/^\d{1,16}$/.test(details.order.chat_id))void sendCustomerDelivery(details.order,details.email,details.password).catch(()=>false);void notifyBookingRecorded(getOrder(orderId)!);return {alreadyProcessed:false,delivered:true};}
   catch(error){if(!(error instanceof Error)||!['Account is unavailable','Account is already in use','No IDs are available'].includes(error.message))throw error;}
  }
  if(newlyClaimed){const currentOrder=getOrder(orderId)!;await Promise.all([sendAdminClaim(currentOrder),sendApprovalPush(currentOrder)]);}
