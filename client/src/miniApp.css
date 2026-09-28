@@ -17,3 +17,9 @@
 .mini-support{margin-top:14px}
 .mini-support .mini-extend{margin-top:16px;text-decoration:none}
 @media(max-width:375px){.mini-nav{width:calc(100% - 24px);padding:6px}.mini-nav button span{font-size:10px}}
+
+.mini-availability{display:flex;align-items:center;gap:12px;padding:13px 17px;margin:-10px 0 17px;border:1px solid rgba(255,255,255,.85);border-radius:18px;background:rgba(255,255,252,.44);box-shadow:0 8px 22px rgba(30,67,55,.09);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+.mini-availability-dot{width:11px;height:11px;flex:none;border-radius:50%;background:#219c66;box-shadow:0 0 0 5px rgba(33,156,102,.13)}
+.mini-availability.is-unavailable .mini-availability-dot{background:#a8683c;box-shadow:0 0 0 5px rgba(168,104,60,.14)}
+.mini-availability div{min-width:0}.mini-availability strong,.mini-availability small{display:block}.mini-availability strong{font-size:14px;line-height:1.3;color:#145940}.mini-availability.is-unavailable strong{color:#854f30}.mini-availability small{margin-top:2px;font-size:11px;line-height:1.35;color:#61776e}
+.mini-page .mini-availability{margin:0 0 18px}
