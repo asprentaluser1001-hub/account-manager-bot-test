@@ -23,3 +23,10 @@
 .mini-availability.is-unavailable .mini-availability-dot{background:#a8683c;box-shadow:0 0 0 5px rgba(168,104,60,.14)}
 .mini-availability div{min-width:0}.mini-availability strong,.mini-availability small{display:block}.mini-availability strong{font-size:14px;line-height:1.3;color:#145940}.mini-availability.is-unavailable strong{color:#854f30}.mini-availability small{margin-top:2px;font-size:11px;line-height:1.35;color:#61776e}
 .mini-page .mini-availability{margin:0 0 18px}
+
+/* Hold both the artwork and its soft veil steady across Mini App tabs. */
+.mini-shell{position:relative;isolation:isolate;background:#eef2e8}
+.mini-shell::before,.mini-shell::after{content:"";position:fixed;inset:0;height:100vh;height:100lvh;pointer-events:none}
+.mini-shell::before{z-index:0;background:#eef2e8 url('/backgrounds/botanical-v4.png') center top/cover no-repeat}
+.mini-shell::after{z-index:1;background:linear-gradient(180deg,rgba(247,249,241,.2),rgba(250,250,244,.55))}
+.mini-inner{position:relative;z-index:2;background:none}

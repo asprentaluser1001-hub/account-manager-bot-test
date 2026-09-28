@@ -103,3 +103,10 @@ body {
   .v4-shell .v3-main{padding-bottom:calc(165px + env(safe-area-inset-bottom))}
 }
 @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.v4-shell .admin-panel,.v4-shell .v3-glass,.v4-shell .v3-metric,.v4-shell .v3-main .bg-white:not(button){background:rgba(255,255,251,.9)}}
+
+/* Keep the wallpaper tied to the viewport, not to the changing tab height.
+   iOS WebKit resizes a fixed background on a scrolling container. */
+.v4-shell.v3-shell,.v4-shell.v3-login{position:relative;isolation:isolate;background:#eef2e8}
+.v4-shell::before{content:"";position:fixed;inset:0;height:100vh;height:100lvh;z-index:0;pointer-events:none;background:#eef2e8 url('/backgrounds/botanical-v4.png') center top/cover no-repeat}
+.v4-shell>.v3-main,.v4-shell>.v3-glass{position:relative;z-index:1}
+.v4-shell .admin-panel,.v4-shell .v3-overview-card{background:rgba(255,255,252,.68)}
