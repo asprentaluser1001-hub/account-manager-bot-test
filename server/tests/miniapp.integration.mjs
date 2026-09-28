@@ -8,8 +8,8 @@ import {createRequire} from 'node:module';
 
 const require=createRequire(import.meta.url);
 const token='123456:test-mini-app-token';
-function signed(id,authDate=Math.floor(Date.now()/1000)){
- const fields={auth_date:String(authDate),user:JSON.stringify({id,first_name:'Preview',last_name:'Customer'})};
+function signed(id,authDate=Math.floor(Date.now()/1000),withSignature=false){
+ const fields={auth_date:String(authDate),user:JSON.stringify({id,first_name:'Preview',last_name:'Customer'}),...(withSignature?{signature:'telegram-ed25519-signature'}:{})};
  const check=Object.entries(fields).sort(([a],[b])=>a.localeCompare(b)).map(([key,value])=>`${key}=${value}`).join('\n');
  const secret=createHmac('sha256','WebAppData').update(token).digest();
  const hash=createHmac('sha256',secret).update(check).digest('hex');
@@ -28,6 +28,9 @@ test('Mini App verifies Telegram identity and keeps customers separated',async()
  try{
   const alice=signed('12345'),bob=signed('67890');
   assert.equal(verifyMiniAppData(alice,token).id,'12345');
+  const signedWithSignature=signed('12345',Math.floor(Date.now()/1000),true);
+  assert.equal(verifyMiniAppData(signedWithSignature,token).id,'12345');
+  assert.throws(()=>verifyMiniAppData(signedWithSignature.replace('telegram-ed25519-signature','tampered'),token),/Invalid/);
   assert.throws(()=>verifyMiniAppData(signed('12345',Math.floor(Date.now()/1000)-86401),token),/expired/);
   assert.throws(()=>verifyMiniAppData(alice.replace('12345','67890'),token),/Invalid/);
   assert.throws(()=>verifyMiniAppData(alice,token+'other'),/Invalid/);
