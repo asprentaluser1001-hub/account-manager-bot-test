@@ -8,7 +8,9 @@ export function verifyMiniAppData(raw:string,botToken:string,now=Date.now()):Min
  if(!hash||!(/^[a-f0-9]{64}$/i).test(hash))throw new Error('Invalid Telegram session');
  const entries=[...params.entries()];
  if(new Set(entries.map(([key])=>key)).size!==entries.length)throw new Error('Invalid Telegram session');
- const signed=entries.filter(([key])=>key!=='hash'&&key!=='signature').sort(([a],[b])=>a.localeCompare(b)).map(([key,value])=>`${key}=${value}`).join('\n');
+ // Bot-token HMAC signs every received field except hash. The Ed25519
+ // third-party scheme excludes signature as well, but that is a different check.
+ const signed=entries.filter(([key])=>key!=='hash').sort(([a],[b])=>a.localeCompare(b)).map(([key,value])=>`${key}=${value}`).join('\n');
  const key=createHmac('sha256','WebAppData').update(botToken).digest();
  const expected=createHmac('sha256',key).update(signed).digest();
  if(!timingSafeEqual(Buffer.from(hash,'hex'),expected))throw new Error('Invalid Telegram session');
