@@ -4,7 +4,7 @@ import {db} from '../db';
 import {verifyMiniAppData,MiniAppUser} from '../lib/miniAppAuth';
 import {availableAccounts,createWebOrder,getOrder,markGatewayError,PRICES,saveGatewayLinks,TestOrder} from '../lib/testOrders';
 import {createImbOrder,isImbConfigured} from '../lib/imbPayment';
-import {sendAdminExtensionRequest} from '../lib/telegramBot';
+import {sendAdminExtensionRequest,setting} from '../lib/telegramBot';
 import {hasPendingMiniAppExtension,pendingMiniAppExtensions,removeMiniAppExtensionRequest,requestMiniAppExtension} from '../lib/miniAppExtensions';
 
 const confirmed=['approved','delivered','delivery_failed','expired','reset_failed','cancelled'];
@@ -24,7 +24,8 @@ miniAppRouter.get('/me',(req:CustomerRequest,res)=>{
  const user=req.miniUser!,active=activeFor(user.id);
  const rows=db.prepare("SELECT id,hours,amount,status,created_at,expires_at FROM test_orders WHERE chat_id=? AND COALESCE(order_type,'booking')='booking' AND status IN ('approved','delivered','delivery_failed','expired','reset_failed','cancelled') ORDER BY created_at DESC LIMIT 12")
   .all(user.id) as Array<{id:string;hours:number;amount:number;status:string;created_at:string;expires_at:string|null}>;
- res.json({user,available:availableAccounts().length>0,prices:PRICES,active:active?{id:active.id,hours:active.hours,expiresAt:active.expires_at,status:active.status,extensionRequested:hasPendingMiniAppExtension(active.id,active.expires_at!)}:null,recent:rows.filter(row=>confirmed.includes(row.status)).map(row=>({id:row.id,hours:row.hours,amount:row.amount,status:row.status,createdAt:row.created_at,expiresAt:row.expires_at}))});
+ const support=setting('support_username');
+ res.json({user,available:availableAccounts().length>0,prices:PRICES,supportUsername:/^[a-zA-Z][a-zA-Z0-9_]{4,31}$/.test(support)?support:null,active:active?{id:active.id,hours:active.hours,expiresAt:active.expires_at,status:active.status,extensionRequested:hasPendingMiniAppExtension(active.id,active.expires_at!)}:null,recent:rows.filter(row=>confirmed.includes(row.status)).map(row=>({id:row.id,hours:row.hours,amount:row.amount,status:row.status,createdAt:row.created_at,expiresAt:row.expires_at}))});
 });
 miniAppRouter.post('/book',async(req:CustomerRequest,res)=>{
  const user=req.miniUser!,hours=Number(req.body?.hours);

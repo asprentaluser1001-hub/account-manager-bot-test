@@ -2,7 +2,7 @@ import {useCallback,useEffect,useState} from 'react';
 import './miniApp.css';
 
 type Row={id:string;hours:number;amount:number;status:string;createdAt:string;expiresAt:string|null};
-type Account={user:{id:string;name:string};available:boolean;prices:Record<string,number>;active:{id:string;hours:number;expiresAt:string;status:string;extensionRequested:boolean}|null;recent:Row[]};
+type Account={user:{id:string;name:string};available:boolean;prices:Record<string,number>;supportUsername:string|null;active:{id:string;hours:number;expiresAt:string;status:string;extensionRequested:boolean}|null;recent:Row[]};
 type Tab='home'|'book'|'history'|'help';
 type TelegramApp={initData:string;ready:()=>void;expand:()=>void;close:()=>void;openTelegramLink?:(url:string)=>void};
 declare global {interface Window {Telegram?:{WebApp:TelegramApp}}}
@@ -11,6 +11,7 @@ function remaining(end:string,now:number){const total=Math.max(0,Math.floor((Dat
 function duration(hours:number){return hours===168?'1 week':hours===720?'1 month':`${hours} hour${hours===1?'':'s'}`;}
 function date(iso:string){return new Date(iso).toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric',timeZone:'Asia/Kolkata'});}
 function time(iso:string){return new Date(iso).toLocaleTimeString('en-IN',{hour:'numeric',minute:'2-digit',timeZone:'Asia/Kolkata'});}
+const NAV_ICONS={home:'M3 10.5 12 3l9 7.5V21h-6v-6H9v6H3V10.5z',book:'M4 7h16M7 3v8m10-8v8M4 7v14h16V7M8 15h8',history:'M3 12a9 9 0 1 0 3-6.7M3 4v5h5m4-2v5l3 2',help:'M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.8.4-1 1-1 1.7M12 17h.01M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20'};
 
 export default function MiniApp(){
  const [data,setData]=useState<Account|null>(null),[tab,setTab]=useState<Tab>('home'),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[now,setNow]=useState(Date.now());
@@ -41,8 +42,13 @@ export default function MiniApp(){
    </>}
    {tab==='book'&&<section className="mini-page"><h1>Choose access</h1><p>Pay through the existing checkout. Access starts after confirmation.</p>{active?<div className="mini-feature"><h2>Current booking is active</h2><p>Your next quick booking appears after this booking ends.</p></div>:plans.map(([hours,amount])=><button key={hours} className="mini-plan" disabled={busy||!data.available} onClick={()=>book(Number(hours))}><span>{duration(Number(hours))}</span><strong>₹{amount}</strong><span>›</span></button>)}</section>}
    {tab==='history'&&<section className="mini-page"><h1>Booking history</h1><p>Only bookings linked to your Telegram account appear here.</p>{data.recent.length?data.recent.map(item=><HistoryRow key={item.id} item={item}/>):<div className="mini-feature mini-empty"><h2>No bookings yet</h2><p>Once your first booking is confirmed, you’ll see it here.</p></div>}</section>}
-   {tab==='help'&&<section className="mini-page"><h1>Need help?</h1><p>Contact the FlingRoulette bot for help with bookings or extensions.</p><div className="mini-feature"><h2>Payment and access</h2><p>A request does not add time. The admin confirms payment before extending your booking.</p><button className="mini-extend" onClick={()=>window.Telegram?.WebApp?.close()}>Return to bot <span>›</span></button></div></section>}
+   {tab==='help'&&<section className="mini-page"><h1>Questions & answers</h1><p>Quick answers about booking, payment and access.</p><div className="mini-feature mini-faq">
+    <details><summary>When does my booking start?</summary><p>Time starts only after your payment is confirmed and access is approved.</p></details>
+    <details><summary>How do I extend my booking?</summary><p>On Home, tap “Request +50 min”. The extra time is added only after the admin confirms the ₹50 payment.</p></details>
+    <details><summary>Where can I find my bookings?</summary><p>See the current booking on Home and past confirmed bookings in History.</p></details>
+    <details><summary>What if payment or access fails?</summary><p>Contact the admin with your booking ID. Do not submit a second payment until they advise you.</p></details>
+   </div><div className="mini-feature mini-support"><h2>Still need help?</h2><p>Message the admin directly about payments, access or extensions.</p>{data.supportUsername?<a className="mini-extend" href={`https://t.me/${data.supportUsername}`} onClick={event=>{if(window.Telegram?.WebApp?.openTelegramLink){event.preventDefault();window.Telegram.WebApp.openTelegramLink(`https://t.me/${data.supportUsername}`)}}}>Contact admin <span>›</span></a>:<p className="mini-hint">The admin hasn’t added a support contact yet. Please message the FlingRoulette bot.</p>}</div></section>}
   </>}
- </div><nav className="mini-nav" aria-label="Mini App navigation">{(['home','book','history','help'] as const).map((item)=><button key={item} className={tab===item?'selected':''} onClick={()=>{setTab(item);setNotice('')}} aria-current={tab===item?'page':undefined}><span aria-hidden="true">{{home:'⌂',book:'▣',history:'◴',help:'?'}[item]}</span>{item[0].toUpperCase()+item.slice(1)}</button>)}</nav></div>;
+ </div><nav className="mini-nav" aria-label="Mini App navigation">{(['home','book','history','help'] as const).map((item)=><button key={item} className={tab===item?'selected':''} onClick={()=>{setTab(item);setNotice('')}} aria-current={tab===item?'page':undefined}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={NAV_ICONS[item]}/></svg><span>{item[0].toUpperCase()+item.slice(1)}</span></button>)}</nav></div>;
 }
 function HistoryRow({item}:{item:Row}){return <article className="mini-history-row"><span className="mini-history-icon" aria-hidden="true">◷</span><div><strong>{duration(item.hours)} access</strong><small>{date(item.createdAt)} · {item.id}</small></div><span className="mini-history-state">{item.status==='expired'?'Completed':item.status==='cancelled'?'Cancelled':item.status==='delivery_failed'?'Needs help':item.status==='reset_failed'?'Reset pending':'Active'}</span><b>₹{item.amount}</b></article>}

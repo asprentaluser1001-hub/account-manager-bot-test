@@ -23,7 +23,8 @@ test('Mini App verifies Telegram identity and keeps customers separated',async()
  const {miniAppRouter}=require('../dist/routes/miniApp.js');
  const {db}=require('../dist/db.js');
  const {verifyMiniAppData}=require('../dist/lib/miniAppAuth.js');
- const {createWebOrder}=require('../dist/lib/testOrders.js');
+  const {createWebOrder}=require('../dist/lib/testOrders.js');
+  const {saveSetting}=require('../dist/lib/telegramBot.js');
  let server;
  try{
   const alice=signed('12345'),bob=signed('67890');
@@ -42,6 +43,11 @@ test('Mini App verifies Telegram identity and keeps customers separated',async()
   const call=async(path,init,method='GET',body)=>{const r=await fetch(base+path,{method,headers:{'X-Telegram-Init-Data':init,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});return {status:r.status,data:await r.json()}};
   assert.equal((await call('/api/miniapp/me','')).status,401);
   assert.equal((await call('/api/miniapp/me',alice.replace('12345','67890'))).status,401);
+  assert.equal((await call('/api/miniapp/me',alice)).data.supportUsername,null);
+  saveSetting('support_username','AdminSupport42');
+  assert.equal((await call('/api/miniapp/me',alice)).data.supportUsername,'AdminSupport42');
+  saveSetting('support_username','invalid/name');
+  assert.equal((await call('/api/miniapp/me',alice)).data.supportUsername,null);
   const created=await call('/api/miniapp/book',alice,'POST',{hours:1});
   assert.equal(created.status,201,JSON.stringify(created.data));assert.match(created.data.checkoutUrl,/^\/checkout\?order=/);
   const account=await call('/api/miniapp/me',alice);assert.equal(account.status,200);assert.equal(account.data.recent.length,0);

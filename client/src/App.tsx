@@ -561,7 +561,6 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
             <div><h1 className="font-heading text-lg font-bold text-slate-900">FlingRoulette</h1><p className="text-[10px] font-semibold tracking-[0.16em] uppercase text-slate-400">Admin</p></div>
           </div>
           <div className="flex items-center gap-1">
-            <button onClick={enablePush} disabled={pushState==='checking'} className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg transition-colors ${pushState==='on'?'bg-emerald-50 text-emerald-700':'text-slate-600 hover:text-slate-900 hover:bg-slate-100'}`}><span>{pushState==='on'?'●':'🔔'}</span><span>{pushState==='on'?'Alerts on':'Enable alerts'}</span></button>
             <button onClick={onLogout} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"><Icon path={ICONS.logout} className="w-4 h-4" /><span className="hidden sm:inline">Log out</span></button>
           </div>
         </div>
@@ -579,6 +578,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
         {(['manual','history'] as const).includes(activeTab as 'manual'|'history') && <nav className="v3-booking-tabs" aria-label="Booking tools">{([['manual','Manual booking'],['history','History']] as const).map(([id,label])=><button key={id} onClick={()=>setActiveTab(id)} className={activeTab===id?'active':''} aria-current={activeTab===id?'page':undefined}>{label}</button>)}</nav>}
         {activeTab === 'overview' ? <OverviewPanel token={token} accounts={accounts} onNavigate={setActiveTab} /> : activeTab === 'settings' ? (
           <>
+            <section className="admin-panel" aria-label="Notification settings"><h2 className="font-heading text-xl font-bold text-slate-900">Notification settings</h2><p className="text-sm text-slate-600 mt-1 mb-4">Get booking alerts on this device.</p><button onClick={enablePush} disabled={pushState==='checking'||pushState==='unsupported'} className="admin-secondary" type="button">{pushState==='on'?'● Alerts on':pushState==='checking'?'Checking alerts…':pushState==='unsupported'?'Notifications unavailable':'🔔 Enable alerts'}</button></section>
             <PaymentSettingsPanel token={token} />
             <BotSettingsPanel token={token} />
             <SettingsPanel token={token} onLogout={onLogout} onBack={() => setActiveTab('accounts')} />

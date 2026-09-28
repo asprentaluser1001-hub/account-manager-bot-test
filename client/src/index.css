@@ -82,3 +82,24 @@ body {
   }
   .v3-main { padding-bottom: calc(150px + env(safe-area-inset-bottom)); }
 }
+
+/* V4.0.2: let the botanical wallpaper show through every major admin card. */
+.v4-shell.v3-shell{background:#eef2e8 url('/backgrounds/botanical-v4.png') center top/cover fixed no-repeat}
+.v4-shell .v3-header{background:rgba(255,255,251,.29);border-color:rgba(255,255,255,.65);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+.v4-shell .admin-panel,.v4-shell .v3-glass,.v4-shell .v3-metric,.v4-shell .v3-overview-card,
+.v4-shell .v3-main .bg-white:not(button):not(input):not(select):not(textarea),
+.v4-shell .v3-main .bg-slate-50:not(button):not(input):not(select):not(textarea),
+.v4-shell .v3-control-card{
+  background:rgba(255,255,252,.40);border-color:rgba(255,255,255,.76);
+  box-shadow:inset 0 1px 1px rgba(255,255,255,.9),0 12px 30px rgba(30,67,55,.10);
+  backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px)
+}
+.v4-shell .admin-tabs,.v4-shell .v3-booking-tabs{background:rgba(255,255,251,.33);border-color:rgba(255,255,255,.7);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px)}
+.v4-shell .admin-tabs button.active,.v4-shell .v3-booking-tabs button.active{background:rgba(214,243,225,.68)}
+@media(max-width:640px){
+  .v4-shell .v3-header{background:transparent;backdrop-filter:none;-webkit-backdrop-filter:none}
+  .v4-shell .v3-header>div:last-child{bottom:calc(34px + env(safe-area-inset-bottom));background:transparent}
+  .v4-shell .admin-tabs{background:rgba(255,255,251,.33)}
+  .v4-shell .v3-main{padding-bottom:calc(165px + env(safe-area-inset-bottom))}
+}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.v4-shell .admin-panel,.v4-shell .v3-glass,.v4-shell .v3-metric,.v4-shell .v3-main .bg-white:not(button){background:rgba(255,255,251,.9)}}
