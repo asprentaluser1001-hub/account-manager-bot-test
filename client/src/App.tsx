@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import OrdersPanel from './OrdersPanel';
 import BotSettingsPanel from './BotSettingsPanel';
 import PaymentSettingsPanel from './PaymentSettingsPanel';
@@ -313,6 +313,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const hasLoadedAccounts = useRef(false);
   const [error, setError] = useState('');
   const [expandedHistory, setExpandedHistory] = useState<Record<string, boolean>>({});
   const [historyShown, setHistoryShown] = useState(5);
@@ -351,8 +352,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
   );
 
   const load = useCallback(async () => {
-    setLoading(true);
-    setError('');
+    if (!hasLoadedAccounts.current) setLoading(true);
     try {
       const [accRes, histRes] = await Promise.all([
         fetch('/api/accounts', { headers: authHeaders() }),
@@ -364,9 +364,11 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
       if (!accRes.ok) throw new Error(accData.error || 'Failed to load');
       setAccounts(accData.accounts);
       setHistory(histData.history || []);
+      setError('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load');
     } finally {
+      hasLoadedAccounts.current = true;
       setLoading(false);
     }
   }, [authHeaders, onLogout]);
@@ -384,14 +386,14 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
     return () => clearInterval(t);
   }, []);
 
-  // When any sold timer passes its end, reload so the server unsells it.
+  // Refresh reset status without remounting the account cards. A scheduled
+  // reset can take several minutes, so an expired sold timer must not trigger
+  // a full reload every second while it is pending, running or failed.
   useEffect(() => {
-    const anyExpired = accounts.some(
-      (a) => a.sold && a.soldUntil && new Date(a.soldUntil).getTime() <= nowTick
-    );
-    if (anyExpired) load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nowTick]);
+    if (activeTab !== 'accounts' && activeTab !== 'overview') return;
+    const interval = setInterval(() => { if (!document.hidden) void load(); }, 20_000);
+    return () => clearInterval(interval);
+  }, [activeTab, load]);
 
   async function addAccount() {
     if (!name.trim() || !email.trim() || !password.trim()) { setAddError('All fields are required'); return; }
