@@ -52,3 +52,16 @@ The booking overview includes total orders, distinct customers, approved test sa
 ## Bot navigation
 
 Telegram displays its own **Start** button before a customer first talks to a bot; bots cannot message users simply when they reopen a conversation. After starting, customers can use the Telegram command menu (`/home`), or the **Home** button on booking screens. Saved proof media is sent in groups of up to ten items per Telegram album. The upgrade migrates existing saved screenshots automatically; keep the `server/test.db` database when updating the VPS.
+
+
+## Account recovery, migration and complimentary time
+
+- **Accounts → Lost password / stuck reset / remove ID**: stop retries and quarantine an ID, save a recovered current Flingster password and queue a reset, or permanently remove an unusable ID after typing its name. Recovery ends linked bookings and keeps their history. Removal does not change the external password.
+- Password changes are confirmed by logging in with the new password in a fresh Chromium profile. If confirmation fails, the last proposed password remains available in the admin recovery panel; the prior stored password is preserved. Check which password works before retrying.
+- **Bookings → Migrate ID**: select an available replacement. The booking keeps its remaining time and associated extension records. The old ID stays reserved while its password reset is queued. If Telegram delivery fails or the customer has no linked Telegram ID, share the replacement credentials privately from Accounts.
+- **Bookings → +10 / +15 / +30 min free**: complimentary time updates the booking, account and password reset timer together. It does not add sales or revenue. Time cannot be added after expiry or once resetting starts.
+- **More → Bot settings → Customer mini app URL**: save the customer-facing HTTPS URL. The welcome message invites users to check the mini app and includes an **Open mini app** button. `PUBLIC_MINI_APP_URL` can also configure it; `PUBLIC_CHECKOUT_URL` is the fallback. This is shown on `/start` or Home; it is not an unsolicited broadcast.
+
+After deploying the updated client and server, restart the existing service. The server adds the recovery-password column to the existing SQLite database automatically. Back up the live database before upgrading. These changes do not recover a forgotten external-site password automatically.
+
+Validation: build `server` and `client` with `npm run build`, then run `node --test tests/*.mjs` from `server`. The recovery suite uses only temporary databases, sample credentials and a mocked external browser; it never changes live customer passwords.

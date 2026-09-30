@@ -42,7 +42,7 @@ export function extendBooking(id:string):TestOrder{
   if(reset?.status!=='pending')throw new Error('Account reset has started or failed; cannot extend');
   const now=new Date().toISOString(),expires=new Date(new Date(order.expires_at!).getTime()+50*60000).toISOString();
   db.prepare('UPDATE accounts SET sold_until=? WHERE id=? AND sold_until=?').run(expires,accountId,order.expires_at);
-  db.prepare("UPDATE test_orders SET expires_at=? WHERE id=?").run(expires,id);
+  db.prepare("UPDATE test_orders SET expires_at=?,reminder_notified_at=NULL WHERE id=?").run(expires,id);
   schedule(accountId,expires);
   const extensionId='EXT-'+randomUUID().slice(0,8).toUpperCase();
   db.prepare("INSERT INTO test_orders(id,chat_id,username,hours,amount,status,account_id,created_at,approved_at,expires_at,source,customer_contact,order_type,parent_order_id,duration_minutes) VALUES (?,?,?,?,?,'delivered',?,?,?,?,?,?,'extension',?,50)")
@@ -68,10 +68,12 @@ export function transferBooking(id:string,newAccountId:string):TestOrder{
   const order=activeOrder(id);
   if(!availableAccounts().some(account=>account.id===newAccountId))throw new Error('Choose a different available account');
   const oldAccountId=order.account_id!,now=new Date().toISOString();
+  const reset=db.prepare('SELECT status FROM auto_reset_schedule WHERE account_id=?').get(oldAccountId) as {status:string}|undefined;
+  if(reset?.status==='running')throw new Error('Stop the current reset before migrating this booking');
   const changed=db.prepare('UPDATE accounts SET sold=1,sold_until=? WHERE id=? AND sold=0').run(order.expires_at,newAccountId);
   if(!changed.changes)throw new Error('New account is no longer available');
   schedule(newAccountId,order.expires_at!);
-  db.prepare('UPDATE test_orders SET account_id=? WHERE id=?').run(newAccountId,id);
+  db.prepare('UPDATE test_orders SET account_id=? WHERE id=? OR parent_order_id=?').run(newAccountId,id,id);
   db.prepare('UPDATE accounts SET sold_until=? WHERE id=?').run(now,oldAccountId);
   schedule(oldAccountId,now);
   event(id,'transfer',0,`From ${oldAccountId} to ${newAccountId}; old account reset queued`);log('booking.transfer',id,`From ${oldAccountId} to ${newAccountId}`);
@@ -93,4 +95,22 @@ export function financeReport(){
  const period=(key:string)=>({period:key,bookings:confirmed.filter(row=>row.day.startsWith(key)).length,revenue:sum(confirmed.filter(row=>row.day.startsWith(key)))});
  const failures=db.prepare("SELECT COUNT(*) n FROM test_orders WHERE history_hidden=0 AND status IN ('rejected','payment_gateway_error')").get() as {n:number};
  return {daily:[...new Set(confirmed.map(row=>row.day))].map(period),monthly:[...new Set(confirmed.map(row=>row.day.slice(0,7)))].map(period),total:sum(confirmed),successful:confirmed.length,failed:failures.n,refunds:refundStates()};
+}
+
+export function recordAccountRecovery(accountId:string,action:string,name:string){log('account.recovery.'+action,accountId,name);}
+export function addExtraTime(id:string,minutes:number):TestOrder{
+ if(![10,15,30].includes(minutes))throw new Error('Extra time must be 10, 15 or 30 minutes');
+ return db.transaction(()=>{
+  const order=activeOrder(id),accountId=order.account_id!;
+  const account=db.prepare('SELECT sold,sold_until FROM accounts WHERE id=?').get(accountId) as {sold:number;sold_until:string|null}|undefined;
+  const reset=db.prepare('SELECT status FROM auto_reset_schedule WHERE account_id=?').get(accountId) as {status:string}|undefined;
+  if(!account?.sold||account.sold_until!==order.expires_at||reset?.status!=='pending')throw new Error('Booking changed or reset has started; refresh before adding time');
+  const expires=new Date(new Date(order.expires_at!).getTime()+minutes*60_000).toISOString();
+  db.prepare('UPDATE accounts SET sold_until=? WHERE id=?').run(expires,accountId);
+  db.prepare('UPDATE test_orders SET expires_at=?,reminder_notified_at=NULL WHERE id=?').run(expires,id);
+  schedule(accountId,expires);
+  event(id,'extra_time',0,`Added ${minutes} complimentary minutes`);
+  log('booking.extra_time',id,String(minutes));
+  return getOrder(id)!;
+ })();
 }
