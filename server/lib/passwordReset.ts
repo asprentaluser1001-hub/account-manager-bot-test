@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import { db, AccountRow } from '../db';
 import { sandboxReset } from './testOrders';
 import {runResetJob,ResetResult} from './resetJobs';
+import {openResetLogin,findResetAccount} from './resetNavigation';
 
 /**
  * Password reset via headless Chromium (Playwright).
@@ -18,14 +19,11 @@ import {runResetJob,ResetResult} from './resetJobs';
 const SITE_URL = 'https://flingster.com/';
 
 // Login flow
-const SEL_LOGIN_OPEN = '.login-mdl.red-lnk';
 const SEL_LOGIN_EMAIL = '#user-email';
 const SEL_LOGIN_PASSWORD = '#user-pass';
 const SEL_LOGIN_SUBMIT = 'button.rlt-login';
 
 // Navigation to My Account
-const SEL_MENU_ICON = '.fi-menu';
-const SEL_MY_ACCOUNT = '.mw-user.red-lnk';
 
 // Change password modal
 const SEL_CHANGE_PASSWORD_OPEN = '.fi-pencil.chn-pass-mdl';
@@ -87,6 +85,8 @@ async function performReset(accountId:string,signal:AbortSignal):Promise<ResetRe
   const verificationDir = createTempUserDataDir();
   let context: Awaited<ReturnType<typeof chromium.launchPersistentContext>> | null = null;
 
+  let stage = 'launching browser';
+  let activePage: import('playwright').Page | undefined;
   const stop=()=>{if(context)void context.close().catch(()=>{});};
   signal.addEventListener('abort',stop,{once:true});
   try {
@@ -111,13 +111,16 @@ async function performReset(accountId:string,signal:AbortSignal):Promise<ResetRe
     page.setDefaultTimeout(15000);
     page.setDefaultNavigationTimeout(20000);
 
+    activePage = page;
+    stage = 'loading initial login page';
     // 1. Open site
     await page.goto(SITE_URL, { waitUntil: 'domcontentloaded' });
 
     // 2. Open login modal
-    await page.waitForSelector(SEL_LOGIN_OPEN, { state: 'visible' });
-    await page.click(SEL_LOGIN_OPEN);
+    stage = 'opening initial login form';
+    await openResetLogin(page, signal);
 
+    stage = 'submitting current credentials';
     // 3. Login
     await page.waitForSelector(SEL_LOGIN_EMAIL, { state: 'visible' });
     await page.fill(SEL_LOGIN_EMAIL, account.email);
@@ -125,16 +128,11 @@ async function performReset(accountId:string,signal:AbortSignal):Promise<ResetRe
     await page.click(SEL_LOGIN_SUBMIT);
     await page.waitForTimeout(3000);
 
-    // 4. Open My Account (open hamburger menu first if needed)
-    const myAccountVisible = await page.locator(SEL_MY_ACCOUNT).isVisible().catch(() => false);
-    if (!myAccountVisible) {
-      await page.locator(SEL_MENU_ICON).click({ force: true });
-      await page.waitForTimeout(1000);
-    }
-    await page.waitForSelector(SEL_MY_ACCOUNT, { state: 'visible' });
-    await page.click(SEL_MY_ACCOUNT);
-    await page.waitForTimeout(2000);
+    stage = 'opening account after initial login';
+    const accountLink = await findResetAccount(page, signal);
+    await accountLink.click();
 
+    stage = 'opening password change form';
     // 5. Open change-password modal
     await page.waitForSelector(SEL_CHANGE_PASSWORD_OPEN, { state: 'visible' });
     await page.click(SEL_CHANGE_PASSWORD_OPEN);
@@ -148,6 +146,7 @@ async function performReset(accountId:string,signal:AbortSignal):Promise<ResetRe
 
     signal.throwIfAborted();
     db.prepare('UPDATE accounts SET reset_candidate_password=? WHERE id=?').run(newPassword,account.id);
+    stage = 'submitting password change';
     // 7. Submit
     await page.click(SEL_PASSWORD_SUBMIT);
     await page.waitForTimeout(3000);
@@ -157,22 +156,25 @@ async function performReset(accountId:string,signal:AbortSignal):Promise<ResetRe
     await context.close();
     context=null;
     signal.throwIfAborted();
+    stage = 'launching verification browser';
     context=await chromium.launchPersistentContext(verificationDir,{
       headless:true,timeout:20_000,args:['--no-sandbox','--disable-setuid-sandbox'],
     });
     signal.throwIfAborted();
     const verificationPage=context.pages()[0]||await context.newPage();
+    activePage = verificationPage;
+    stage = 'loading verification login page';
     verificationPage.setDefaultTimeout(15000);
     await verificationPage.goto(SITE_URL,{waitUntil:'domcontentloaded',timeout:20000});
-    await verificationPage.click(SEL_LOGIN_OPEN);
+    stage = 'opening verification login form';
+    await openResetLogin(verificationPage, signal);
+    stage = 'submitting new credentials for verification';
     await verificationPage.fill(SEL_LOGIN_EMAIL,account.email);
     await verificationPage.fill(SEL_LOGIN_PASSWORD,newPassword);
     await verificationPage.click(SEL_LOGIN_SUBMIT);
     await verificationPage.waitForTimeout(3000);
-    if(!await verificationPage.locator(SEL_MY_ACCOUNT).isVisible().catch(()=>false)){
-      await verificationPage.locator(SEL_MENU_ICON).click({force:true});
-    }
-    await verificationPage.waitForSelector(SEL_MY_ACCOUNT,{state:'visible'});
+    stage = 'confirming verified account login';
+    await findResetAccount(verificationPage, signal);
 
     signal.throwIfAborted();
     // 9. Save new password to SQLite
@@ -185,7 +187,11 @@ async function performReset(accountId:string,signal:AbortSignal):Promise<ResetRe
     console.log(`[PasswordReset] ✓ ${account.name}`);
     return { success: true, newPassword };
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
+    const cause = signal.aborted ? signal.reason : err;
+    const detail = cause instanceof Error ? cause.message : 'Unknown error';
+    let location = 'unavailable';
+    try { const url = new URL(activePage?.url() || SITE_URL); location = url.origin + url.pathname; } catch {}
+    const message = `${stage}: ${detail} (page: ${location})`;
     console.error(`[PasswordReset] ✗ ${account.name} — ${message}`);
     return { success: false, error: message };
   } finally {
