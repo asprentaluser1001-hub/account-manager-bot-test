@@ -5,7 +5,7 @@ import {activeAccounts,approveOrder,availableAccounts,claimPayment,createManualB
 import {sendAdminClaim,sendCustomerDelivery,sendCustomerStatus} from '../lib/telegramBot';
 import {notifyBookingRecorded} from '../lib/bookingNotifications';
 import {fulfillMiniAppExtension} from '../lib/miniAppExtensions';
-import {auditLog,bookingEvents,endBooking,extendBooking,financeReport,refundStates,setRefund,transferBooking} from '../lib/v3Features';
+import {addExtraTime,auditLog,bookingEvents,endBooking,extendBooking,financeReport,refundStates,setRefund,transferBooking} from '../lib/v3Features';
 export const testOrdersRouter=Router();testOrdersRouter.use(adminAuth);
 const fail=(res:Response,e:unknown)=>res.status(400).json({error:e instanceof Error?e.message:'Request failed'});
 testOrdersRouter.get('/',(_req,res)=>res.json({orders:recentOrders(),summary:summary(),finance:finance(),available:availableAccounts(),active:activeAccounts()}));
@@ -16,12 +16,13 @@ testOrdersRouter.get('/v3/audit',(_req,res)=>res.json({entries:auditLog()}));
 testOrdersRouter.get('/v3/refunds',(_req,res)=>res.json({refunds:refundStates()}));
 testOrdersRouter.get('/:id/events',(req,res)=>res.json({events:bookingEvents(req.params.id)}));
 testOrdersRouter.post('/:id/extend',(req,res)=>{try{if(req.body?.paymentConfirmed!==true)throw new Error('Verify the ₹50 payment before extending');const order=extendBooking(req.params.id);fulfillMiniAppExtension(order.id);void notifyBookingRecorded(order,true);res.json({order})}catch(e){fail(res,e)}});
+testOrdersRouter.post('/:id/extra-time',async(req,res)=>{try{const order=addExtraTime(req.params.id,req.body?.minutes);const notified=await sendCustomerStatus(order,`Extra ${req.body.minutes} minutes added. New end time: ${order.expires_at}`);res.json({order,notified})}catch(e){fail(res,e)}});
 testOrdersRouter.post('/:id/end',(req,res)=>{try{res.json({order:endBooking(req.params.id,'end_early')})}catch(e){fail(res,e)}});
 testOrdersRouter.post('/:id/cancel',(req,res)=>{try{res.json({order:endBooking(req.params.id,'cancel')})}catch(e){fail(res,e)}});
-testOrdersRouter.post('/:id/transfer',async(req,res)=>{try{const order=transferBooking(req.params.id,String(req.body?.accountId||''));let delivered=false;if(order.source==='telegram'){
+testOrdersRouter.post('/:id/transfer',async(req,res)=>{try{const order=transferBooking(req.params.id,String(req.body?.accountId||''));let delivered=false;if(/^\d{1,20}$/.test(order.chat_id)){
  const account=db.prepare('SELECT email,password FROM accounts WHERE id=?').get(order.account_id) as {email:string;password:string};
  delivered=await sendCustomerDelivery(order,account.email,account.password).catch(()=>false);
- }res.json({order,delivered})}catch(e){fail(res,e)}});
+ }res.json({order,delivered,manualDelivery:!/^\d{1,20}$/.test(order.chat_id),message:delivered?'Replacement credentials sent.': 'Migration saved. Share replacement credentials privately from Accounts.'})}catch(e){fail(res,e)}});
 testOrdersRouter.patch('/:id/refund',(req,res)=>{try{res.json(setRefund(req.params.id,String(req.body?.status||''),String(req.body?.note||'')))}catch(e){fail(res,e)}});
 testOrdersRouter.post('/manual',async(req,res)=>{try{
  const order=createManualBooking(String(req.body.name||''),String(req.body.contact||''),Number(req.body.hours),Number(req.body.amount),String(req.body.accountId||''),String(req.body.telegramChatId||''));

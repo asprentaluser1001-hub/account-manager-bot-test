@@ -6,6 +6,7 @@ import { APP_NAME, APP_VERSION, BUILD_NUMBER, COPYRIGHT_OWNER } from './version'
 import Checkout from './Checkout';
 import OverviewPanel from './OverviewPanel';
 import BookingControls from './BookingControls';
+import AccountRecovery from './AccountRecovery';
 import V3Reports from './V3Reports';
 import ManualExtension from './ManualExtension';
 import { usePreviewMode } from './usePreviewMode';
@@ -22,6 +23,7 @@ interface Account {
   created_at: string;
   autoResetAt: string | null;
   autoResetStatus: string | null;
+  reset_candidate_password?:string|null;
 }
 
 interface HistoryEntry {
@@ -331,6 +333,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
   const [addError, setAddError] = useState('');
 
   // edit form
+  const [recoveryId,setRecoveryId]=useState<string|null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editEmail, setEditEmail] = useState('');
@@ -455,6 +458,8 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
   }
 
   async function deleteAccount(id: string) {
+    const account=accounts.find(a=>a.id===id);
+    if(account?.sold||account?.autoResetStatus==='running'||account?.autoResetStatus==='failed'){setRecoveryId(id);return;}
     if (!confirm('Delete this account?')) return;
     try {
       const res = await fetch(`/api/accounts/${id}`, { method: 'DELETE', headers: authHeaders() });
@@ -813,6 +818,8 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
                           </button>
                         )}
 
+                        <button onClick={()=>setRecoveryId(recoveryId===acc.id?null:acc.id)} className="block mt-3 text-xs font-semibold text-amber-800">Lost password / stuck reset / remove ID</button>
+                        {recoveryId===acc.id&&<AccountRecovery key={acc.id} id={acc.id} name={acc.name} candidate={acc.reset_candidate_password} token={token} onChanged={load} onClose={()=>setRecoveryId(null)}/>}
                         {/* Sold-hours picker */}
                         {soldOpenId === acc.id && !acc.sold && (
                           <div className="mt-2 bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-3">

@@ -4,6 +4,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { db, AccountRow } from '../db';
 import { sandboxReset } from './testOrders';
+import {runResetJob,ResetResult} from './resetJobs';
 
 /**
  * Password reset via headless Chromium (Playwright).
@@ -68,9 +69,11 @@ function removeTempDir(dir: string): void {
   try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* best effort */ }
 }
 
-export async function resetAccountPassword(
-  accountId: string
-): Promise<{ success: boolean; newPassword?: string; error?: string }> {
+export function resetAccountPassword(accountId:string):Promise<ResetResult>{
+ return runResetJob(accountId,signal=>performReset(accountId,signal));
+}
+async function performReset(accountId:string,signal:AbortSignal):Promise<ResetResult>{
+  signal.throwIfAborted();
   if (process.env.SANDBOX_MODE === 'true') return sandboxReset(accountId);
   const account = db
     .prepare('SELECT id, name, email, password, last_reset_at, created_at FROM accounts WHERE id = ?')
@@ -81,13 +84,18 @@ export async function resetAccountPassword(
   }
 
   const userDataDir = createTempUserDataDir();
+  const verificationDir = createTempUserDataDir();
   let context: Awaited<ReturnType<typeof chromium.launchPersistentContext>> | null = null;
 
+  const stop=()=>{if(context)void context.close().catch(()=>{});};
+  signal.addEventListener('abort',stop,{once:true});
   try {
     await randomDelay(1000, 3000);
+    signal.throwIfAborted();
 
     context = await chromium.launchPersistentContext(userDataDir, {
       headless: true,
+      timeout: 20_000,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
       userAgent: randomItem(USER_AGENTS),
       viewport: {
@@ -98,6 +106,7 @@ export async function resetAccountPassword(
       timezoneId: randomItem(TIMEZONES),
     });
 
+    signal.throwIfAborted();
     const page = context.pages()[0] || (await context.newPage());
     page.setDefaultTimeout(15000);
     page.setDefaultNavigationTimeout(20000);
@@ -137,37 +146,52 @@ export async function resetAccountPassword(
     await page.fill(SEL_NEW_PASSWORD, newPassword);
     await page.fill(SEL_CONFIRM_PASSWORD, newPassword);
 
+    signal.throwIfAborted();
+    db.prepare('UPDATE accounts SET reset_candidate_password=? WHERE id=?').run(newPassword,account.id);
     // 7. Submit
     await page.click(SEL_PASSWORD_SUBMIT);
     await page.waitForTimeout(3000);
 
-    // 8. Verify — if the current-password field is still filled, likely failed
-    const currentPassValue = await page.locator(SEL_CURRENT_PASSWORD).inputValue().catch(() => '');
-    if (currentPassValue.length > 0) {
-      const errorVisible = await page
-        .locator('.error, .alert-danger, .err-msg')
-        .isVisible()
-        .catch(() => false);
-      if (errorVisible) {
-        return { success: false, error: 'Password change rejected by site' };
-      }
+    // Verify the new credentials in an entirely fresh browser profile.
+    // Missing error text alone is not proof that the change succeeded.
+    await context.close();
+    context=null;
+    signal.throwIfAborted();
+    context=await chromium.launchPersistentContext(verificationDir,{
+      headless:true,timeout:20_000,args:['--no-sandbox','--disable-setuid-sandbox'],
+    });
+    signal.throwIfAborted();
+    const verificationPage=context.pages()[0]||await context.newPage();
+    verificationPage.setDefaultTimeout(15000);
+    await verificationPage.goto(SITE_URL,{waitUntil:'domcontentloaded',timeout:20000});
+    await verificationPage.click(SEL_LOGIN_OPEN);
+    await verificationPage.fill(SEL_LOGIN_EMAIL,account.email);
+    await verificationPage.fill(SEL_LOGIN_PASSWORD,newPassword);
+    await verificationPage.click(SEL_LOGIN_SUBMIT);
+    await verificationPage.waitForTimeout(3000);
+    if(!await verificationPage.locator(SEL_MY_ACCOUNT).isVisible().catch(()=>false)){
+      await verificationPage.locator(SEL_MENU_ICON).click({force:true});
     }
+    await verificationPage.waitForSelector(SEL_MY_ACCOUNT,{state:'visible'});
 
+    signal.throwIfAborted();
     // 9. Save new password to SQLite
-    db.prepare('UPDATE accounts SET password = ?, last_reset_at = ? WHERE id = ?').run(
+    db.prepare('UPDATE accounts SET password = ?, last_reset_at = ?, reset_candidate_password=NULL WHERE id = ?').run(
       newPassword,
       new Date().toISOString(),
       account.id
     );
 
-    console.log(`[PasswordReset] ✓ ${account.name} — new password: ${newPassword}`);
+    console.log(`[PasswordReset] ✓ ${account.name}`);
     return { success: true, newPassword };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error(`[PasswordReset] ✗ ${account.name} — ${message}`);
     return { success: false, error: message };
   } finally {
-    if (context) await context.close();
+    signal.removeEventListener('abort',stop);
+    if (context) await context.close().catch(()=>{});
     removeTempDir(userDataDir);
+    removeTempDir(verificationDir);
   }
 }

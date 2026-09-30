@@ -1,15 +1,16 @@
 import {useCallback,useEffect,useState} from 'react';
 type Proof={id:number;fileId:string;kind:'photo'|'video'};
-type Settings={supportUsername:string;proofs:Proof[]};
+type Settings={miniAppUrl:string;supportUsername:string;proofs:Proof[]};
 export default function BotSettingsPanel({token}:{token:string}){
- const [settings,setSettings]=useState<Settings>({supportUsername:'',proofs:[]});
+ const [settings,setSettings]=useState<Settings>({miniAppUrl:'',supportUsername:'',proofs:[]});
+ const [miniUrl,setMiniUrl]=useState('');
  const [username,setUsername]=useState(''),[busy,setBusy]=useState(false),[notice,setNotice]=useState(''),[error,setError]=useState('');
  const request=useCallback(async(path:string,method='GET',body?:object)=>{
   const r=await fetch('/api/bot-settings'+path,{method,headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});
   const d=await r.json().catch(()=>({error:'Request failed. Try a smaller image.'}));
   if(!r.ok)throw new Error(d.error||'Request failed');return d;
  },[token]);
- const load=useCallback(async()=>{const d=await request('');setSettings(d);setUsername(d.supportUsername)},[request]);
+ const load=useCallback(async()=>{const d=await request('');setSettings(d);setUsername(d.supportUsername);setMiniUrl(d.miniAppUrl||'')},[request]);
  useEffect(()=>{load().catch(e=>setError(e.message))},[load]);
  async function act(work:()=>Promise<unknown>,message:string){setBusy(true);setError('');setNotice('');try{await work();await load();setNotice(message)}catch(e){setError(e instanceof Error?e.message:'Request failed')}finally{setBusy(false)}}
  async function upload(file:File){
@@ -25,6 +26,11 @@ export default function BotSettingsPanel({token}:{token:string}){
   <form className="flex flex-wrap gap-2 items-end mb-6" onSubmit={e=>{e.preventDefault();act(()=>request('/support','PUT',{username}),'Support contact saved.')}}>
    <label className="text-sm text-slate-700 flex-1">Your Telegram username<input className="block w-full border border-slate-300 rounded-lg px-3 py-2 mt-1" placeholder="your_username" value={username} onChange={e=>setUsername(e.target.value)} disabled={busy}/></label>
    <button disabled={busy} className="rounded-lg bg-slate-900 text-white px-4 py-2 disabled:opacity-50">Save contact</button>
+  </form>
+  <form className="flex flex-wrap gap-2 items-end mb-6" onSubmit={e=>{e.preventDefault();act(()=>request('/mini-app','PUT',{url:miniUrl}),'Mini app link saved. Users will see the message and button when they open the bot.')}}>
+   <label className="text-sm text-slate-700 flex-1">Customer mini app URL<input type="url" className="block w-full border border-slate-300 rounded-lg px-3 py-2 mt-1" placeholder="https://your-domain/miniapp" value={miniUrl} onChange={e=>setMiniUrl(e.target.value)} disabled={busy}/></label>
+   <button disabled={busy} className="rounded-lg bg-slate-900 text-white px-4 py-2 disabled:opacity-50">Save mini app</button>
+   <p className="text-xs text-slate-500 w-full">The bot welcome message invites users to check the mini app and includes an Open mini app button.</p>
   </form>
   <div className="flex flex-wrap justify-between gap-2 items-center"><h3 className="font-semibold">Proof photos & videos ({settings.proofs.length})</h3>
   <label className={'rounded-lg px-3 py-2 text-sm border border-slate-300 '+(busy?'opacity-50':'cursor-pointer')}>Add photo or video<input className="sr-only" type="file" accept="image/png,image/jpeg,image/webp,video/mp4" disabled={busy} onChange={e=>{const file=e.target.files?.[0];if(file)upload(file);e.target.value=''}}/></label></div>
