@@ -73,7 +73,7 @@ test('unverified external changes preserve both the old and attempted password',
  let launches=0;
  chromium.launchPersistentContext=async()=>{
   const verifying=++launches===2;
-  const page={setDefaultTimeout(){},setDefaultNavigationTimeout(){},goto:async()=>{},click:async()=>{},fill:async()=>{},waitForTimeout:async()=>{},locator:()=>({isVisible:async()=>true,click:async()=>{}}),waitForSelector:async()=>{if(verifying)throw new Error('New credentials could not be verified');}};
+  const page={setDefaultTimeout(){},setDefaultNavigationTimeout(){},goto:async()=>{},click:async()=>{},fill:async()=>{},waitForTimeout:async()=>{},locator:(selector)=>({all:async()=>{if(verifying&&selector==='.mw-user.red-lnk')throw new Error('New credentials could not be verified');return [{isVisible:async()=>true,click:async()=>{}}];}}),waitForSelector:async()=>{if(verifying)throw new Error('New credentials could not be verified');}};
   return {pages:()=>[page],close:async()=>{}};
  };
  try{
