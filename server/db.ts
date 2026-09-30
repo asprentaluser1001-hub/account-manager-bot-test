@@ -71,6 +71,12 @@ try {
   /* ignore */
 }
 
+// Keep the last proposed password if the site changed it but verification failed.
+// It remains an admin-only recovery hint, never evidence of a successful reset.
+if(!(db.prepare('PRAGMA table_info(accounts)').all() as Array<{name:string}>).some(c=>c.name==='reset_candidate_password')){
+ db.exec('ALTER TABLE accounts ADD COLUMN reset_candidate_password TEXT');
+}
+
 export interface AccountRow {
   id: string;
   name: string;

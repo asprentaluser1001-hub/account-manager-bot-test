@@ -24,31 +24,44 @@ const GAP_BETWEEN_TRIES_MS = 30_000;   // 30s between tries in a batch
 const WAIT_BETWEEN_BATCHES_MS = 10 * 60_000; // 10 minutes
 
 let interval: ReturnType<typeof setInterval> | null = null;
-const running = new Set<string>(); // account ids currently being processed
+const running = new Map<string,AbortController>(); // account ids currently being processed
 
 function log(msg: string) {
   console.log(`[AutoReset] ${msg}`);
 }
 
-async function attemptBatch(accountId: string): Promise<{ success: boolean; newPassword?: string; error?: string }> {
+async function attemptBatch(accountId: string, signal:AbortSignal): Promise<{ success: boolean; newPassword?: string; error?: string }> {
   let last: { success: boolean; newPassword?: string; error?: string } = { success: false, error: 'not run' };
   for (let i = 1; i <= TRIES_PER_BATCH; i++) {
+    signal.throwIfAborted();
     log(`account ${accountId}: try ${i}/${TRIES_PER_BATCH}`);
     last = await resetAccountPassword(accountId);
+    signal.throwIfAborted();
     if (last.success) return last;
-    if (i < TRIES_PER_BATCH) await sleep(GAP_BETWEEN_TRIES_MS);
+    if (i < TRIES_PER_BATCH) await sleep(GAP_BETWEEN_TRIES_MS,signal);
   }
   return last;
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
+function sleep(ms:number,signal:AbortSignal):Promise<void>{
+ return new Promise((resolve,reject)=>{
+  signal.throwIfAborted();
+  const stop=()=>{clearTimeout(timer);reject(signal.reason);};
+  const timer=setTimeout(()=>{signal.removeEventListener('abort',stop);resolve();},ms);
+  signal.addEventListener('abort',stop,{once:true});
+ });
+}
+export function stopScheduledReset(accountId:string):void{
+ // Persist the pause before cancelling so restart cannot pick it up again.
+ db.prepare("UPDATE auto_reset_schedule SET status='failed' WHERE account_id=? AND status IN ('pending','running')").run(accountId);
+ running.get(accountId)?.abort(new Error('Reset stopped by admin'));
 }
 
 async function processSchedule(row: AutoResetRow): Promise<void> {
   const accountId = row.account_id;
   if (running.has(accountId)) return;
-  running.add(accountId);
+  const controller=new AbortController(),signal=controller.signal;
+  running.set(accountId,controller);
 
   // Mark running so we don't pick it up again
   db.prepare(`UPDATE auto_reset_schedule SET status = 'running' WHERE account_id = ?`).run(accountId);
@@ -63,15 +76,16 @@ async function processSchedule(row: AutoResetRow): Promise<void> {
       await Promise.allSettled([sendAdminBookingEnd(ended),sendBookingEndPush(ended)]);
     }
     log(`account ${accountId}: starting auto reset (batch 1)`);
-    let result = await attemptBatch(accountId);
+    let result = await attemptBatch(accountId,signal);
 
     if (!result.success) {
       log(`account ${accountId}: batch 1 failed, waiting 10 min before batch 2`);
-      await sleep(WAIT_BETWEEN_BATCHES_MS);
+      await sleep(WAIT_BETWEEN_BATCHES_MS,signal);
       log(`account ${accountId}: starting batch 2`);
-      result = await attemptBatch(accountId);
+      result = await attemptBatch(accountId,signal);
     }
 
+    signal.throwIfAborted();
     logResetHistory({
       accountId,
       accountName,
@@ -88,6 +102,7 @@ async function processSchedule(row: AutoResetRow): Promise<void> {
 
     log(`account ${accountId}: auto reset ${result.success ? 'SUCCESS' : 'GAVE UP'}`);
   } catch (err) {
+    if(signal.aborted)return;
     logResetHistory({
       accountId,
       accountName,
@@ -120,6 +135,7 @@ function tick(): void {
 }
 
 export function startAutoResetScheduler(): void {
+  if(interval)return;
   log('started (checks every minute)');
   // Resume work interrupted by a process restart in every environment.
   db.prepare("UPDATE auto_reset_schedule SET status='pending' WHERE status='running'").run();

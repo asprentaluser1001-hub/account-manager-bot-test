@@ -5,6 +5,9 @@ import { adminAuth } from '../auth';
 import { resetAccountPassword } from '../lib/passwordReset';
 import { logResetHistory } from '../lib/history';
 import { markReset } from '../lib/testOrders';
+import {stopScheduledReset} from '../lib/autoResetScheduler';
+import {withResetStopped} from '../lib/resetJobs';
+import {recordAccountRecovery} from '../lib/v3Features';
 
 /**
  * Account routes. All protected by adminAuth.
@@ -60,7 +63,7 @@ function withSchedule(rows: AccountRow[]) {
 accountsRouter.get('/', (_req: Request, res: Response) => {
   expireSold();
   const rows = db
-    .prepare('SELECT id, name, email, password, sold, sold_until, last_reset_at, created_at FROM accounts ORDER BY created_at DESC')
+    .prepare('SELECT id, name, email, password, reset_candidate_password, sold, sold_until, last_reset_at, created_at FROM accounts ORDER BY created_at DESC')
     .all() as AccountRow[];
   return res.json({ accounts: withSchedule(rows) });
 });
@@ -138,10 +141,13 @@ accountsRouter.patch('/:id/sold', (req: Request, res: Response) => {
 // End an active booking early. The account stays reserved until its password
 // has reset successfully, so it can never be re-used with old credentials.
 accountsRouter.post('/:id/release', async (req: Request, res: Response) => {
+ try {
   const { id } = req.params;
   const account = db.prepare('SELECT name FROM accounts WHERE id = ?').get(id) as { name: string } | undefined;
   if (!account) return res.status(404).json({ error: 'Account not found' });
 
+  stopScheduledReset(id);
+  await withResetStopped(id,()=>{});
   const result = await resetAccountPassword(id);
   logResetHistory({
     accountId: id,
@@ -159,13 +165,46 @@ accountsRouter.post('/:id/release', async (req: Request, res: Response) => {
   markReset(id, true);
   db.prepare('UPDATE accounts SET sold = 0, sold_until = NULL WHERE id = ?').run(id);
   return res.json({ ok: true, sold: false, newPassword: result.newPassword });
+ }catch(e){return res.status(409).json({error:e instanceof Error?e.message:'Account release failed'});}
+});
+
+// Recovery does not claim to recover a forgotten external-site password.
+// Stop the worker first; preserve history and quarantine or retire the ID.
+accountsRouter.post('/:id/recovery',async(req:Request,res:Response)=>{
+ const {id}=req.params,action=req.body?.action;
+ const account=db.prepare('SELECT name FROM accounts WHERE id=?').get(id) as {name:string}|undefined;
+ if(!account)return res.status(404).json({error:'Account not found'});
+ if(!['stop','retry','retire'].includes(action))return res.status(400).json({error:'Choose stop, retry or retire'});
+ if(action==='retire'&&req.body?.confirmation!==account.name)return res.status(400).json({error:'Enter the account name to confirm permanent removal'});
+ const password=req.body?.password;
+ if(action==='retry'&&(typeof password!=='string'||!password.trim()||password.length>256))return res.status(400).json({error:'Enter the current password recovered from the external site'});
+ try{
+  stopScheduledReset(id);
+  const result=await withResetStopped(id,()=>db.transaction(()=>{
+   const now=new Date().toISOString();
+   if(action==='retire'){
+    db.prepare("UPDATE test_orders SET status='cancelled',expires_at=?,error='Account retired by admin: credentials unavailable' WHERE account_id=? AND status IN ('approved','delivered','delivery_failed','reset_failed')").run(now,id);
+    db.prepare('DELETE FROM auto_reset_schedule WHERE account_id=?').run(id);
+    db.prepare('DELETE FROM accounts WHERE id=?').run(id);
+   }else{
+    if(action==='retry')db.prepare('UPDATE accounts SET password=? WHERE id=?').run(password,id);
+    db.prepare('UPDATE accounts SET sold=1,sold_until=? WHERE id=?').run(now,id);
+    db.prepare("INSERT INTO auto_reset_schedule(account_id,run_at,status,created_at) VALUES (?,?,?,?) ON CONFLICT(account_id) DO UPDATE SET status=excluded.status,run_at=excluded.run_at,created_at=excluded.created_at").run(id,now,action==='retry'?'pending':'failed',now);
+    db.prepare("UPDATE test_orders SET status='reset_failed',expires_at=?,error=? WHERE account_id=? AND status IN ('approved','delivered','delivery_failed','reset_failed')").run(now,action==='retry'?'Recovery reset queued':'Reset stopped by admin; account quarantined',id);
+   }
+   recordAccountRecovery(id,action,account.name);
+   return {ok:true,message:action==='retire'?'Account permanently removed. Booking history kept.':action==='retry'?'Recovered password saved. Reset queued.':'Reset stopped. Account remains unavailable.'};
+  })());
+  return res.json(result);
+ }catch(e){return res.status(409).json({error:e instanceof Error?e.message:'Recovery failed'});}
 });
 
 // Delete an account (also clears any pending schedule)
 accountsRouter.delete('/:id', (req: Request, res: Response) => {
   const { id } = req.params;
   const reserved=db.prepare('SELECT sold FROM accounts WHERE id=?').get(id) as {sold:number}|undefined;
-  if(reserved?.sold)return res.status(409).json({error:'End the booking and reset its password before deleting this account.'});
+  const reset=db.prepare('SELECT status FROM auto_reset_schedule WHERE account_id=?').get(id) as {status:string}|undefined;
+  if(reserved?.sold||reset?.status==='running'||reset?.status==='failed')return res.status(409).json({error:'Use account recovery to stop or permanently remove a stuck ID.'});
   const result = db.prepare('DELETE FROM accounts WHERE id = ?').run(id);
   if (result.changes === 0) return res.status(404).json({ error: 'Account not found' });
   db.prepare('DELETE FROM auto_reset_schedule WHERE account_id = ?').run(id);
