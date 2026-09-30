@@ -85,6 +85,7 @@ async function performReset(accountId:string,signal:AbortSignal):Promise<ResetRe
   const verificationDir = createTempUserDataDir();
   let context: Awaited<ReturnType<typeof chromium.launchPersistentContext>> | null = null;
 
+  let navigationStatus: number | undefined;
   let stage = 'launching browser';
   let activePage: import('playwright').Page | undefined;
   const stop=()=>{if(context)void context.close().catch(()=>{});};
@@ -93,7 +94,7 @@ async function performReset(accountId:string,signal:AbortSignal):Promise<ResetRe
     await randomDelay(1000, 3000);
     signal.throwIfAborted();
 
-    context = await chromium.launchPersistentContext(userDataDir, {
+    const browserOptions = {
       headless: true,
       timeout: 20_000,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
@@ -104,7 +105,8 @@ async function performReset(accountId:string,signal:AbortSignal):Promise<ResetRe
       },
       locale: randomItem(LOCALES),
       timezoneId: randomItem(TIMEZONES),
-    });
+    };
+    context = await chromium.launchPersistentContext(userDataDir, browserOptions);
 
     signal.throwIfAborted();
     const page = context.pages()[0] || (await context.newPage());
@@ -114,7 +116,8 @@ async function performReset(accountId:string,signal:AbortSignal):Promise<ResetRe
     activePage = page;
     stage = 'loading initial login page';
     // 1. Open site
-    await page.goto(SITE_URL, { waitUntil: 'domcontentloaded' });
+    const initialResponse = await page.goto(SITE_URL, { waitUntil: 'domcontentloaded' });
+    navigationStatus = initialResponse?.status();
 
     // 2. Open login modal
     stage = 'opening initial login form';
@@ -157,15 +160,16 @@ async function performReset(accountId:string,signal:AbortSignal):Promise<ResetRe
     context=null;
     signal.throwIfAborted();
     stage = 'launching verification browser';
-    context=await chromium.launchPersistentContext(verificationDir,{
-      headless:true,timeout:20_000,args:['--no-sandbox','--disable-setuid-sandbox'],
-    });
+    // Keep the same page presentation settings, but do not copy cookies or
+    // authenticated storage: verification must prove the new credentials work.
+    context=await chromium.launchPersistentContext(verificationDir, browserOptions);
     signal.throwIfAborted();
     const verificationPage=context.pages()[0]||await context.newPage();
     activePage = verificationPage;
     stage = 'loading verification login page';
     verificationPage.setDefaultTimeout(15000);
-    await verificationPage.goto(SITE_URL,{waitUntil:'domcontentloaded',timeout:20000});
+    const verificationResponse = await verificationPage.goto(SITE_URL,{waitUntil:'domcontentloaded',timeout:20000});
+    navigationStatus = verificationResponse?.status();
     stage = 'opening verification login form';
     await openResetLogin(verificationPage, signal);
     stage = 'submitting new credentials for verification';
@@ -191,7 +195,9 @@ async function performReset(accountId:string,signal:AbortSignal):Promise<ResetRe
     const detail = cause instanceof Error ? cause.message : 'Unknown error';
     let location = 'unavailable';
     try { const url = new URL(activePage?.url() || SITE_URL); location = url.origin + url.pathname; } catch {}
-    const message = `${stage}: ${detail} (page: ${location})`;
+    let title = 'unavailable';
+    try { title = (await activePage?.title() || title).slice(0, 120); } catch {}
+    const message = `${stage}: ${detail} (page: ${location}; HTTP: ${navigationStatus ?? 'unknown'}; title: ${JSON.stringify(title)})`;
     console.error(`[PasswordReset] ✗ ${account.name} — ${message}`);
     return { success: false, error: message };
   } finally {

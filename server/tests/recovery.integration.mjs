@@ -73,14 +73,43 @@ test('unverified external changes preserve both the old and attempted password',
  let launches=0;
  chromium.launchPersistentContext=async()=>{
   const verifying=++launches===2;
-  const page={setDefaultTimeout(){},setDefaultNavigationTimeout(){},goto:async()=>{},click:async()=>{},fill:async()=>{},waitForTimeout:async()=>{},locator:(selector)=>({all:async()=>{if(verifying&&selector==='.mw-user.red-lnk')throw new Error('New credentials could not be verified');return [{isVisible:async()=>true,click:async()=>{}}];}}),waitForSelector:async()=>{if(verifying)throw new Error('New credentials could not be verified');}};
+  const page={setDefaultTimeout(){},setDefaultNavigationTimeout(){},url:()=> 'https://flingster.com/?private=test-only',title:async()=> 'Verification required',goto:async()=>({status:()=>verifying?403:200}),click:async()=>{},fill:async()=>{},waitForTimeout:async()=>{},locator:(selector)=>({all:async()=>{if(verifying&&selector==='.mw-user.red-lnk')throw new Error('New credentials could not be verified');return [{isVisible:async()=>true,click:async()=>{}}];}}),waitForSelector:async()=>{if(verifying)throw new Error('New credentials could not be verified');}};
   return {pages:()=>[page],close:async()=>{}};
  };
  try{
   const result=await require('../dist/lib/passwordReset.js').resetAccountPassword('last');
   assert.equal(result.success,false);
+  assert.match(result.error,/confirming verified account login/);
+  assert.match(result.error,/HTTP: 403/);
+  assert.match(result.error,/Verification required/);
+  assert.ok(!result.error.includes('private=test-only'));
   const account=db.prepare('SELECT password,reset_candidate_password,last_reset_at FROM accounts WHERE id=?').get('last');
   assert.equal(account.password,'test-only');assert.match(account.reset_candidate_password,/^[a-z]{3}\d{3}$/);assert.equal(account.last_reset_at,null);
+ }finally{chromium.launchPersistentContext=original;}
+});
+
+test('fresh verification reuses browser settings without sharing a login profile',async()=>{
+ const {chromium}=require('playwright');
+ const original=chromium.launchPersistentContext;
+ const launches=[];
+ db.prepare('INSERT INTO accounts(id,name,email,password,created_at) VALUES (?,?,?,?,?)').run('consistent','Test consistency','consistent@example.invalid','old-test-password',new Date().toISOString());
+ chromium.launchPersistentContext=async(profile,options)=>{
+  launches.push({profile,options});
+  if(launches.length===2){
+   assert.notEqual(profile,launches[0].profile,'verification must use a fresh profile');
+   for(const key of ['userAgent','viewport','locale','timezoneId']){
+    assert.deepEqual(options[key],launches[0].options[key],`verification changed ${key}`);
+   }
+  }
+  const page={setDefaultTimeout(){},setDefaultNavigationTimeout(){},goto:async()=>{},click:async()=>{},fill:async()=>{},waitForTimeout:async()=>{},waitForSelector:async()=>{},locator:()=>({all:async()=>[{isVisible:async()=>true,click:async()=>{}}]})};
+  return {pages:()=>[page],close:async()=>{}};
+ };
+ try{
+  const result=await require('../dist/lib/passwordReset.js').resetAccountPassword('consistent');
+  assert.equal(result.success,true,result.error);
+  assert.equal(launches.length,2);
+  const saved=db.prepare('SELECT password,reset_candidate_password,last_reset_at FROM accounts WHERE id=?').get('consistent');
+  assert.equal(saved.password,result.newPassword);assert.equal(saved.reset_candidate_password,null);assert.ok(saved.last_reset_at);
  }finally{chromium.launchPersistentContext=original;}
 });
 
