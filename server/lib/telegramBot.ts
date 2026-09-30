@@ -31,7 +31,17 @@ function supportButton():{text:string;url?:string;callback_data?:string}{
  const username=setting('support_username');
  return username?{text:'Contact admin',url:`https://t.me/${username}`}:{text:'Contact admin',callback_data:'support'};
 }
-function menu(){return buttons([[{text:'Book now',callback_data:'book'}],[{text:'Check availability',callback_data:'availability'},supportButton()],[{text:'Rates & proofs',callback_data:'proofs'}]]);}
+export function miniAppUrl():string {
+ try{const value=setting('mini_app_url')||process.env.TELEGRAM_MINI_APP_URL||process.env.PUBLIC_MINI_APP_URL||(checkoutUrl?new URL('/miniapp',checkoutUrl).toString():'');const url=new URL(value);return url.protocol==='https:'&&!url.username&&!url.password?url.toString():'';}catch{return '';}
+}
+export function miniAppPrompt(){
+ const url=miniAppUrl();
+ return url?{text:'Check our Telegram mini app to view availability and book your ID.',button:{text:'Open mini app',web_app:{url}}}:null;
+}
+function menu(){
+ const prompt=miniAppPrompt();
+ return buttons([...(prompt?[[prompt.button]]:[]),[{text:'Book now',callback_data:'book'}],[{text:'Check availability',callback_data:'availability'},supportButton()],[{text:'Rates & proofs',callback_data:'proofs'}]]);
+}
 const homeButton={text:'🏠 Home',callback_data:'home'};
 async function showAvailability(chatId:string,messageId?:number){
  const text=welcomeText();
@@ -62,7 +72,7 @@ async function showProofs(chatId:string){
  const count=await sendProofPhotos(chatId);
  await say(chatId,`Rates\n\n${rateList()}\n\n${count?'':'No proof screenshots added yet.\n'}${sandboxMode?'Test only · No payment collected.':'Payment is verified by the admin before access is sent.'}`,buttons([[homeButton]]));
 }
-function welcomeText(){return `Welcome!\n\n${availabilityText()}\n\n${rateList()}\n\nTime starts at approval.\n${sandboxMode?'Test only · No payment collected.':'Payment is verified by the admin before access is sent.'}`;}
+function welcomeText(){return `Welcome!\n\n${availabilityText()}\n\n${rateList()}\n\n${miniAppPrompt()?.text||''}\n\nTime starts at approval.\n${sandboxMode?'Test only · No payment collected.':'Payment is verified by the admin before access is sent.'}`;}
 async function showWelcome(chatId:string,firstVisit:boolean){
  if(firstVisit)await sendProofPhotos(chatId);
  await say(chatId,welcomeText(),menu());
@@ -88,12 +98,12 @@ export async function uploadProof(dataUrl:string):Promise<void>{
 }
 async function api(method:string,body:Record<string,unknown>):Promise<any>{
  if(!token)throw new Error('No test bot token configured');
- const response=await fetch(`https://api.telegram.org/bot${token}/${method}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)});
+ const response=await fetch(`https://api.telegram.org/bot${token}/${method}`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(method==='getUpdates'?30_000:15_000)});
  const result=await response.json() as any;
  if(!response.ok||!result.ok)throw new Error(result.description||'Telegram unavailable');
  return result.result;
 }
-function buttons(buttons:Array<Array<{text:string;callback_data?:string;url?:string}>>){return {inline_keyboard:buttons}}
+function buttons(buttons:Array<Array<{text:string;callback_data?:string;url?:string;web_app?:{url:string}}>>){return {inline_keyboard:buttons}}
 async function say(chatId:string,text:string,keyboard?:ReturnType<typeof buttons>){
  return api('sendMessage',{chat_id:chatId,text,reply_markup:keyboard,protect_content:true});
 }
@@ -124,7 +134,7 @@ export async function sendCustomerDelivery(order:TestOrder,email:string,password
  catch(e){console.error('[Bot] Customer delivery failed',e);return false;}
 }
 export async function sendCustomerStatus(order:TestOrder,status:string){
- if(!token||order.source!=='telegram')return false;
+ if(!token||!/^\d{1,20}$/.test(order.chat_id))return false;
  try{await say(order.chat_id,`${sandboxMode?'TEST ':''}ORDER ${order.id}\nStatus: ${status}${sandboxMode?'\nNo real payment is collected in this preview.':''}`);return true;}catch(e){console.error('[Bot] Status notification failed',e);return false;}
 }
 export async function sendExpiryReminder(order:TestOrder){
@@ -206,7 +216,7 @@ export function startTestBot(){
  if(!token){console.log('[Bot] Set TELEGRAM_BOT_TOKEN to enable the test bot.');return;}
  if(!adminId)console.log('[Bot] Send /id to the bot, then set TELEGRAM_ADMIN_ID and restart before trying approvals.');
  api('setMyCommands',{commands:[{command:'start',description:'Open booking menu'},{command:'home',description:'Return to home'},{command:'support',description:'Contact admin'}]}).catch(e=>console.error('[Bot] Could not set commands',e));
- const miniUrl=process.env.TELEGRAM_MINI_APP_URL?.trim();
+ const miniUrl=miniAppUrl();
  if(miniUrl){
   try{const url=new URL(miniUrl);if(url.protocol!=='https:'||url.pathname!=='/miniapp')throw new Error('Use an HTTPS URL ending in /miniapp');
    api('setChatMenuButton',{menu_button:{type:'web_app',text:'Open FlingRoulette',web_app:{url:miniUrl}}}).catch(e=>console.error('[Bot] Could not set Mini App menu',e));

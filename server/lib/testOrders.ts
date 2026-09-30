@@ -147,7 +147,7 @@ export function rejectOrder(id:string):TestOrder {
 export function availableAccounts():Array<{id:string;name:string}>{
  return db.prepare(`SELECT id,name FROM accounts WHERE sold=0 AND id NOT IN
  (SELECT account_id FROM auto_reset_schedule WHERE status IN ('pending','running','failed'))
- AND id NOT IN (SELECT account_id FROM test_orders WHERE status IN ('approved','delivered','reset_failed')) ORDER BY created_at ASC`).all() as Array<{id:string;name:string}>;
+ AND id NOT IN (SELECT account_id FROM test_orders WHERE status IN ('approved','delivered','delivery_failed','reset_failed')) ORDER BY created_at ASC`).all() as Array<{id:string;name:string}>;
 }
 export function approveOrder(id:string,accountId:string):{order:TestOrder;email:string;password:string} {
  const txn=db.transaction(()=>{
@@ -166,14 +166,14 @@ export function approveOrder(id:string,accountId:string):{order:TestOrder;email:
 export function markDelivered(id:string){db.prepare("UPDATE test_orders SET status='delivered',delivered_at=? WHERE id=? AND status='approved'").run(new Date().toISOString(),id);}
 export function markDeliveryFailed(id:string,error:string){db.prepare("UPDATE test_orders SET status='delivery_failed',error=? WHERE id=? AND status='approved'").run(error.slice(0,300),id);}
 export function markReset(accountId:string,success:boolean,error?:string){
- db.prepare("UPDATE test_orders SET status=?,error=? WHERE account_id=? AND status IN ('approved','delivered','delivery_failed')").run(success?'expired':'reset_failed',success?null:error||'Reset failed',accountId);
+ db.prepare("UPDATE test_orders SET status=?,error=? WHERE account_id=? AND status IN ('approved','delivered','delivery_failed','reset_failed')").run(success?'expired':'reset_failed',success?null:error||'Reset failed',accountId);
  if(success)db.prepare('UPDATE accounts SET sold=0,sold_until=NULL WHERE id=?').run(accountId);
 }
 export function sandboxReset(accountId:string):{success:boolean;newPassword?:string;error?:string}{
  const account=db.prepare('SELECT id FROM accounts WHERE id=?').get(accountId);
  if(!account)return {success:false,error:'Missing account'};
  const newPassword=randomBytes(18).toString('base64url');
- db.prepare('UPDATE accounts SET password=?,last_reset_at=? WHERE id=?').run(newPassword,new Date().toISOString(),accountId);
+ db.prepare('UPDATE accounts SET password=?,last_reset_at=?,reset_candidate_password=NULL WHERE id=?').run(newPassword,new Date().toISOString(),accountId);
  return {success:true,newPassword};
 }
 export function summary(){
