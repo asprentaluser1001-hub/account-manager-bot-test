@@ -8,7 +8,7 @@ export function bookingAlert(order:TestOrder,extension=false):BookingAlert {
  const amount=extension?50:order.amount;
  const status=order.status==='delivery_failed'?'Delivery failed: share access privately.':order.source==='manual'&&order.chat_id==='manual'&&!extension?'Share access privately from Accounts.':'';
  return {
-  title:extension?'Booking extended':'Booking confirmed',
+  title:order.status==='payment_late'?'Late payment — support needed':order.status==='reserved'?'Advance booking confirmed':extension?'Booking extended':'Booking confirmed',
   body:`${order.username} · ₹${amount} · ${order.id}${status?' · '+status:''}`,
   tag:`${extension?'extension':'confirmed'}-${order.id}${extension?'-'+order.expires_at:''}`,
   url:'/?tab=history',
@@ -21,3 +21,4 @@ export async function notifyBookingRecorded(order:TestOrder,extension=false):Pro
  const results=await Promise.allSettled([sendAdminBookingRecorded(alert),sendBookingRecordedPush(alert)]);
  for(const result of results)if(result.status==='rejected')console.error('[Booking alert] Delivery failed',result.reason);
 }
+

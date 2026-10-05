@@ -35,7 +35,7 @@ test('production-mode migration preserves an existing booking and manual extensi
   const oldExpiry=booking.expires_at;
   const extension=orders.createManualExtension('Test Customer','',50,'test-account');
   const newExpiry=orders.getOrder(booking.id).expires_at;
-  assert.equal(new Date(newExpiry)-new Date(oldExpiry),50*60_000);
+  assert.equal(new Date(newExpiry)-new Date(oldExpiry),60*60_000);
   assert.equal(orders.getOrder(extension.id).parent_order_id,booking.id);
   assert.equal(orders.getOrder(extension.id).amount,50);
   assert.equal(db.prepare('SELECT sold_until FROM accounts WHERE id=?').get('test-account').sold_until,newExpiry);
@@ -43,7 +43,7 @@ test('production-mode migration preserves an existing booking and manual extensi
   assert.throws(()=>orders.createManualExtension('Another Customer','',50,'test-account'),/Customer name must match/);
   const repeat=orders.createManualExtension('Test Customer','',50,'test-account');
   assert.equal(repeat.parent_order_id,booking.id);
-  assert.equal(new Date(orders.getOrder(booking.id).expires_at)-new Date(newExpiry),50*60_000);
+  assert.equal(new Date(orders.getOrder(booking.id).expires_at)-new Date(newExpiry),60*60_000);
   const report=require('../dist/lib/v3Features.js').financeReport();
   assert.ok(report.total>=200);
   db.prepare('INSERT INTO accounts(id,name,email,password,sold,sold_until,created_at) VALUES (?,?,?,?,0,NULL,?)').run('manual-account','Manual Account','manual@example.invalid','not-a-live-password',now);
@@ -82,3 +82,4 @@ test('production HTTP path keeps IMB enabled and rejects test payment claims',as
   assert.equal((await fetch(base+'/api/v3/ops/backup',{method:'POST',headers})).status,500);
  }finally{child.kill('SIGTERM');await new Promise(resolve=>setTimeout(resolve,150));rmSync(dir,{recursive:true,force:true})}
 });
+

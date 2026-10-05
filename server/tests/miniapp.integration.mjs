@@ -53,12 +53,19 @@ test('Mini App verifies Telegram identity and keeps customers separated',async()
   const account=await call('/api/miniapp/me',alice);assert.equal(account.status,200);assert.equal(account.data.recent.length,0);
   const orderId=new URL(created.data.checkoutUrl,'http://local').searchParams.get('order');
   db.prepare("UPDATE test_orders SET status='delivered',account_id='sample',expires_at=?,approved_at=? WHERE id=?").run(new Date(Date.now()+3600000).toISOString(),new Date().toISOString(),orderId);
+  db.prepare('UPDATE accounts SET sold=1,sold_until=(SELECT expires_at FROM test_orders WHERE id=?) WHERE id=?').run(orderId,'sample');
+  db.prepare("INSERT INTO auto_reset_schedule VALUES (?,(SELECT expires_at FROM test_orders WHERE id=?),'pending',?)").run('sample',orderId,new Date().toISOString());
   assert.equal((await call('/api/miniapp/me',alice)).data.active.id,orderId);
+  assert.equal((await call('/api/miniapp/me',alice)).data.active.credentials.password,'sample-password');
   const other=await call('/api/miniapp/me',bob);assert.equal(other.data.active,null);assert.equal(other.data.recent.length,0);
   assert.equal((await call('/api/miniapp/book',alice,'POST',{hours:1})).status,409);
   assert.equal((await call('/api/miniapp/extend',bob,'POST',{orderId})).status,404);
-  assert.equal((await call('/api/miniapp/extend',alice,'POST',{orderId})).status,503);
+  const extension=await call('/api/miniapp/extend',alice,'POST',{orderId});assert.equal(extension.status,201);
+  assert.match(extension.data.checkoutUrl,/^\/checkout\?order=/);
+  db.prepare('UPDATE test_orders SET hours=0.5 WHERE id=?').run(orderId);
+  const blocked=await call('/api/miniapp/extend',alice,'POST',{orderId});assert.equal(blocked.status,409);assert.match(blocked.data.error,/30-minute/);
   assert.equal((await call('/api/miniapp/me',alice)).data.active.extensionRequested,false);
   assert.equal(createWebOrder('Regular Customer','',1).order.chat_id,'web');
  }finally{if(server)await new Promise(resolve=>server.close(resolve));db.close();rmSync(dir,{recursive:true,force:true})}
 });
+

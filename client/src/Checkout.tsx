@@ -3,17 +3,17 @@ import {useEffect,useMemo,useState} from 'react';
 type Plan={hours:number;amount:number};
 type Config={brand:string;support:string;plans:Plan[];available:boolean;gatewayEnabled:boolean;mockPayment:boolean};
 type SavedOrder={orderId:string;accessToken:string;amount:number;hours:number};
-type OrderStatus={id:string;username:string;hours:number;amount:number;status:string;created_at:string;claimed_at:string|null;approved_at:string|null;expires_at:string|null;error:string|null;payment_url?:string;phonepe_link?:string;paytm_link?:string;bhim_link?:string;credentials:null|{email:string;password:string}};
+type OrderStatus={id:string;username:string;hours:number;amount:number;status:string;created_at:string;claimed_at:string|null;approved_at:string|null;expires_at:string|null;error:string|null;starts_at?:string;payment_deadline?:string;order_type?:string;payment_url?:string;phonepe_link?:string;paytm_link?:string;bhim_link?:string;credentials:null|{email:string;password:string}};
 
 const ORDER_KEY='flingroulette_checkout_order';
-const duration=(hours:number)=>hours===168?'1 week':hours===720?'1 month':`${hours} hour${hours===1?'':'s'}`;
+const duration=(hours:number)=>hours===0.5?'30 minutes':hours===168?'1 week':hours===720?'1 month':`${hours} hour${hours===1?'':'s'}`;
 function linkedOrder():SavedOrder|null{
  const query=new URLSearchParams(window.location.search),orderId=query.get('order')||'',accessToken=query.get('token')||'',amount=Number(query.get('amount')),hours=Number(query.get('hours'));
- return orderId&&accessToken&&Number.isFinite(amount)&&amount>0&&[1,2,3,168,720].includes(hours)?{orderId,accessToken,amount,hours}:null;
+ return orderId&&accessToken&&Number.isFinite(amount)&&amount>0&&[0.5,1,2,3,168,720].includes(hours)?{orderId,accessToken,amount,hours}:null;
 }
 
 export default function Checkout(){
- const [config,setConfig]=useState<Config|null>(null),[lockedHours]=useState<number|null>(()=>{const query=new URLSearchParams(window.location.search);const value=Number(query.get('hours'));return query.get('new')==='1'&&[1,2,3,168,720].includes(value)?value:null}),[selected,setSelected]=useState<number>(()=>{const value=Number(new URLSearchParams(window.location.search).get('hours'));return [1,2,3,168,720].includes(value)?value:1}),[name,setName]=useState('');
+ const [config,setConfig]=useState<Config|null>(null),[lockedHours]=useState<number|null>(()=>{const query=new URLSearchParams(window.location.search);const value=Number(query.get('hours'));return query.get('new')==='1'&&[0.5,1,2,3,168,720].includes(value)?value:null}),[selected,setSelected]=useState<number>(()=>{const value=Number(new URLSearchParams(window.location.search).get('hours'));return [0.5,1,2,3,168,720].includes(value)?value:1}),[name,setName]=useState('');
  const [saved,setSaved]=useState<SavedOrder|null>(()=>{const linked=linkedOrder();if(linked)return linked;if(new URLSearchParams(window.location.search).get('new')==='1')return null;try{return JSON.parse(sessionStorage.getItem(ORDER_KEY)||'null')}catch{return null}});
  const [order,setOrder]=useState<OrderStatus|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[copied,setCopied]=useState('');
  useEffect(()=>{fetch('/api/checkout/config').then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.error);setConfig(d);if(d.plans?.length&&!d.plans.some((p:Plan)=>p.hours===selected))setSelected(d.plans[0].hours)}).catch(()=>setError('Checkout is temporarily unavailable. Please try again.'))},[]);
@@ -38,21 +38,25 @@ export default function Checkout(){
     <form onSubmit={createOrder} className="checkout-card checkout-form">
      <div><label>Your name</label><input value={name} onChange={e=>setName(e.target.value)} placeholder="Name" required minLength={2} maxLength={64}/></div>
      <div className="order-total"><span>{plan?duration(plan.hours):''}</span><strong>₹{plan?.amount}</strong></div>
+     <p className="checkout-note">Once payment is done, return to this page and wait 5–10 seconds for payment confirmation and your ID.</p>
      <button className="checkout-primary" disabled={busy||!config.available||(!config.gatewayEnabled&&!config.mockPayment)}>{busy?'Creating order…':config.mockPayment?'Create sample booking':'Continue to IMB secure payment'}</button>
      {!config.gatewayEnabled&&!config.mockPayment&&<p className="checkout-note">IMB payment is temporarily unavailable. Please contact support.</p>}
     </form>
    </>}
-   {saved&&!waiting&&!approved&&!rejected&&<div className="checkout-card payment-card">
-    <div className="order-id"><span>Order</span><strong>{saved.orderId}</strong></div>
+   {saved&&!waiting&&!approved&&!rejected&&!['reserved','payment_late','reservation_failed'].includes(order?.status||'')&&<div className="checkout-card payment-card">
+    {order?.order_type==='extension'&&<p className="checkout-note">Extend by 1 hour · ₹50. Payment must be confirmed before {order.payment_deadline?new Date(order.payment_deadline).toLocaleString():'your original booking ends'}. Opening payment does not change your timer.</p>}<div className="order-id"><span>Order</span><strong>{saved.orderId}</strong></div>
     <div className="amount-due"><span>{config.mockPayment?'Sample amount':'Pay exactly'}</span><strong>₹{saved.amount}</strong></div>
     {!order&&<p className="checkout-note">Loading payment details…</p>}
-    {config.mockPayment?<p className="checkout-note">This is a test order. No QR or real payment is available. Ask the preview admin to mark this booking as claimed and assign a sample account.</p>:order?.payment_url?<><p className="checkout-note"><strong>Payment method: IMB</strong></p><a className="checkout-primary block text-center" href={order.payment_url}>Open secure IMB payment</a><p className="checkout-note">Scan the QR code on the IMB payment page to pay. Return here after paying to check your booking.</p></>:order&&<p className="checkout-note">This order has no IMB payment link. If you have already paid, contact support with this order ID. Otherwise, start a new booking to pay through IMB.</p>}
+    {config.mockPayment?<p className="checkout-note">This is a test order. No QR or real payment is available. Ask the preview admin to mark this booking as claimed and assign a sample account.</p>:order?.payment_url?<><p className="checkout-note"><strong>Payment method: IMB</strong></p><a className="checkout-primary block text-center" href={order.payment_url}>Open secure IMB payment</a><p className="checkout-note">Once payment is done, come back to this page and wait 5–10 seconds while we confirm payment and assign your ID. If confirmation takes longer, keep this page open or contact support.</p></>:order&&<p className="checkout-note">This order has no IMB payment link. If you have already paid, contact support with this order ID. Otherwise, start a new booking to pay through IMB.</p>}
     <button className="checkout-link" onClick={startOver}>Start a new booking</button>
    </div>}
    {waiting&&<div className="checkout-card status-card"><div className="status-icon waiting">⌛</div><h2>Booking pending</h2><p>Your order <strong>{saved?.orderId}</strong> is awaiting account assignment or review. This page checks automatically.</p><div className="status-pulse"><span></span>Preparing your access</div></div>}
-   {approved&&order?.credentials&&<div className="checkout-card status-card approved"><div className="status-icon">✓</div><h2>Access approved</h2><p>Your time ends on <strong>{order.expires_at?new Date(order.expires_at).toLocaleString():'the scheduled time'}</strong>.</p><div className="credential"><span>Login</span><strong>{order.credentials.email}</strong><button onClick={()=>copy(order.credentials!.email,'email')}>{copied==='email'?'Copied':'Copy'}</button></div><div className="credential"><span>Password</span><strong>{order.credentials.password}</strong><button onClick={()=>copy(order.credentials!.password,'password')}>{copied==='password'?'Copied':'Copy'}</button></div><p className="checkout-note">Keep this page private. Save your credentials before closing it.</p></div>}
+   {approved&&order?.credentials&&<div className="checkout-card status-card approved"><div className="status-icon">✓</div><h2>Access approved</h2><p>Your time ends on <strong>{order.expires_at?new Date(order.expires_at).toLocaleString():'the scheduled time'}</strong>.</p><div className="credential"><span>Login</span><strong>{order.credentials.email}</strong><button onClick={()=>copy(order.credentials!.email,'email')}>{copied==='email'?'Copied':'Copy'}</button></div><div className="credential"><span>Password</span><strong>{order.credentials.password}</strong><button onClick={()=>copy(order.credentials!.password,'password')}>{copied==='password'?'Copied':'Copy'}</button></div><p className="checkout-note">Keep this page private. Save your credentials before closing it.</p>{order.hours!==0.5&&<p className="checkout-note">Your ID is ready. You can extend by 1 hour from the booking page for this ID.</p>}<a className="checkout-link" href="/miniapp">Open booking page</a></div>}
+   {order?.status==='reserved'&&<div className="checkout-card status-card"><h2>Advance booking confirmed</h2><p>Your slot starts {order.starts_at?new Date(order.starts_at).toLocaleString():''}. Your ID and password appear when the slot starts and the account reset is complete.</p></div>}
+   {['payment_late','reservation_failed'].includes(order?.status||'')&&<div className="checkout-card status-card"><h2>Contact support</h2><p>{order?.error}</p><p>Payment has been recorded; do not pay again. Share order {order?.id} with the admin.</p></div>}
    {rejected&&<div className="checkout-card status-card"><div className="status-icon rejected">×</div><h2>Payment could not be verified</h2><p>Please contact support with order <strong>{saved?.orderId}</strong>.</p>{config.support&&<a className="checkout-primary block" href={config.support.startsWith('http')?config.support:`https://t.me/${config.support.replace(/^@/,'')}`}>Contact support</a>}<button className="checkout-link" onClick={startOver}>Start a new order</button></div>}
   </main>
   <footer className="checkout-footer">© {new Date().getFullYear()} {config.brand} · {config.mockPayment?'Test preview · no real payments':'Payments through IMB'}</footer>
  </div>
 }
+

@@ -43,6 +43,7 @@ type Overview = {
 export type OrdersView = "approvals" | "manual" | "finance" | "history";
 
 const complete = new Set([
+  "reserved", "payment_late", "reservation_failed",
   "approved",
   "delivered",
   "expired",
@@ -52,7 +53,7 @@ const complete = new Set([
 ]);
 const money = (amount: number) => `₹${amount.toLocaleString("en-IN")}`;
 const duration = (hours: number) =>
-  hours === 168
+  hours === 0.5 ? "30 minutes" : hours === 168
     ? "1 week"
     : hours === 720
       ? "1 month"
@@ -872,3 +873,4 @@ function Empty({ title, text }: { title: string; text: string }) {
     </div>
   );
 }
+

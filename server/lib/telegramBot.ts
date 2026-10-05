@@ -25,7 +25,7 @@ export function addProof(fileId:string,kind:'photo'|'video'){
 }
 export function removeProof(id:number){return db.prepare('DELETE FROM proof_media WHERE id=?').run(id).changes>0;}
 export function clearProofs(){db.prepare('DELETE FROM proof_media').run();}
-function duration(hours:number){return hours===168?'1 week (7 days)':hours===720?'1 month (30 days)':`${hours} hour${hours===1?'':'s'}`;}
+function duration(hours:number){return hours===0.5?'30 minutes':hours===168?'1 week (7 days)':hours===720?'1 month (30 days)':`${hours} hour${hours===1?'':'s'}`;}
 function rateList(){return Object.entries(PRICES).map(([h,p])=>`${duration(Number(h))}: ₹${p}`).join('\n');}
 function supportButton():{text:string;url?:string;callback_data?:string}{
  const username=setting('support_username');
@@ -36,11 +36,11 @@ export function miniAppUrl():string {
 }
 export function miniAppPrompt(){
  const url=miniAppUrl();
- return url?{text:'Check our Telegram mini app to view availability and book your ID.',button:{text:'Open mini app',web_app:{url}}}:null;
+ return url?{text:'Check our Telegram mini app to view availability and book your ID.',button:{text:'Open Mini App',web_app:{url}}}:null;
 }
 function menu(){
  const prompt=miniAppPrompt();
- return buttons([...(prompt?[[prompt.button]]:[]),[{text:'Book now',callback_data:'book'}],[{text:'Check availability',callback_data:'availability'},supportButton()],[{text:'Rates & proofs',callback_data:'proofs'}]]);
+ return buttons([[prompt?.button||{text:'Open Mini App',callback_data:'miniapp'}],[{text:'Show Proofs',callback_data:'proofs'}]]);
 }
 const homeButton={text:'🏠 Home',callback_data:'home'};
 async function showAvailability(chatId:string,messageId?:number){
@@ -120,7 +120,7 @@ export async function sendAdminBookingRecorded(alert:{title:string;body:string})
 }
 export async function sendAdminExtensionRequest(order:TestOrder){
  if(!token||!adminId)return false;
- try{await say(adminId,`Extension requested · ₹50\n${order.username} · ${order.id}\nConfirm payment before using +50 min in Bookings.`);return true;}
+ try{await say(adminId,`Extension requested · ₹50\n${order.username} · ${order.id}\nConfirm payment before using +1 hour in Bookings.`);return true;}
  catch(error){console.error('[Bot] Extension request alert failed',error);return false;}
 }
 export async function sendAdminBookingEnd(order:TestOrder){
@@ -130,7 +130,7 @@ export async function sendAdminBookingEnd(order:TestOrder){
 }
 export async function sendCustomerDelivery(order:TestOrder,email:string,password:string){
  if(!token)return false;
- try {const preview=process.env.V3_PREVIEW==='true';await say(order.chat_id,`${preview?'TEST ACCESS':'ACCESS'} · ${order.id}\nLogin: ${email}\nPassword: ${password}\nEnds: ${order.expires_at}${preview?'\nOnly sample credentials are used in this sandbox.':''}`,buttons([[homeButton]]));return true;}
+ try {const preview=process.env.V3_PREVIEW==='true';await say(order.chat_id,`${preview?'TEST ACCESS':'ACCESS'} · ${order.id}\nLogin: ${email}\nPassword: ${password}\nEnds: ${order.expires_at}${order.hours===0.5?'\n30-minute bookings cannot be extended.':'\nYou can extend by 1 hour from the booking page for this ID.'}${preview?'\nOnly sample credentials are used in this sandbox.':''}`,buttons([[homeButton]]));return true;}
  catch(e){console.error('[Bot] Customer delivery failed',e);return false;}
 }
 export async function sendCustomerStatus(order:TestOrder,status:string){
@@ -138,8 +138,8 @@ export async function sendCustomerStatus(order:TestOrder,status:string){
  try{await say(order.chat_id,`${sandboxMode?'TEST ':''}ORDER ${order.id}\nStatus: ${status}${sandboxMode?'\nNo real payment is collected in this preview.':''}`);return true;}catch(e){console.error('[Bot] Status notification failed',e);return false;}
 }
 export async function sendExpiryReminder(order:TestOrder){
- if(!token||order.source!=='telegram')return false;
- try{await say(order.chat_id,`Reminder: ${sandboxMode?'TEST ':''}booking ${order.id} is ending soon (${order.expires_at}). Contact the admin if you need more time.`);return true;}catch(e){console.error('[Bot] Expiry reminder failed',e);return false;}
+ if(!token||!/^\d{1,20}$/.test(order.chat_id)||order.hours===0.5)return false;
+ try{await say(order.chat_id,`Booking ${order.id} has 5 minutes remaining. Extend by 1 hour for ₹50 from your booking page. Payment must be confirmed before ${order.expires_at}. Otherwise your password resets at the original end time.`,miniAppPrompt()?buttons([[miniAppPrompt()!.button]]):undefined);return true;}catch(e){console.error('[Bot] Expiry reminder failed',e);return false;}
 }
 async function handleMessage(m:any){
  if(m.chat?.type!=='private')return;
@@ -174,7 +174,8 @@ async function handleCallback(c:any){
  const availabilityMessage=data==='availability'?availabilityText():'';
  await api('answerCallbackQuery',{callback_query_id:c.id,...(availabilityMessage?{text:availabilityMessage,show_alert:true}:{})}).catch(()=>{});
  try {
-  if(data==='home'){await showWelcome(chatId,false);
+  if(data==='miniapp'){await say(chatId,'The Mini App link is not configured. Please contact the admin.');
+  }else if(data==='home'){await showWelcome(chatId,false);
   } else if(data==='book'){await showPlans(chatId);
   } else if(data==='availability'){await showAvailability(chatId,c.message.message_id);
   } else if(data==='proofs'){await showProofs(chatId);
@@ -233,3 +234,4 @@ export async function sendAdminResetResult(accountName:string,success:boolean){
  try{await say(adminId,success?`Reset completed successfully\n${accountName} is now available.`:`Reset failed\n${accountName} remains booked. Check Accounts and History before releasing it.`);return true;}
  catch(e){console.error('[Bot] Reset result alert failed',e);return false;}
 }
+
