@@ -1,3 +1,4 @@
+import {assertBookingWindow} from './v5Bookings';
 import {randomUUID} from 'crypto';
 import {db} from '../db';
 import {availableAccounts, getOrder, TestOrder} from './testOrders';
@@ -40,14 +41,16 @@ export function extendBooking(id:string):TestOrder{
   if(!account?.sold||!account.sold_until||account.sold_until!==order.expires_at)throw new Error('Booking timer changed; refresh and try again');
   const reset=db.prepare('SELECT status FROM auto_reset_schedule WHERE account_id=?').get(accountId) as {status:string}|undefined;
   if(reset?.status!=='pending')throw new Error('Account reset has started or failed; cannot extend');
-  const now=new Date().toISOString(),expires=new Date(new Date(order.expires_at!).getTime()+50*60000).toISOString();
+  if(order.hours===0.5)throw new Error('30-minute bookings cannot be extended');
+  const now=new Date().toISOString(),expires=new Date(new Date(order.expires_at!).getTime()+60*60000).toISOString();
+  assertBookingWindow(accountId,order.expires_at!,new Date(Date.parse(expires)+120000).toISOString());
   db.prepare('UPDATE accounts SET sold_until=? WHERE id=? AND sold_until=?').run(expires,accountId,order.expires_at);
   db.prepare("UPDATE test_orders SET expires_at=?,reminder_notified_at=NULL WHERE id=?").run(expires,id);
   schedule(accountId,expires);
   const extensionId='EXT-'+randomUUID().slice(0,8).toUpperCase();
-  db.prepare("INSERT INTO test_orders(id,chat_id,username,hours,amount,status,account_id,created_at,approved_at,expires_at,source,customer_contact,order_type,parent_order_id,duration_minutes) VALUES (?,?,?,?,?,'delivered',?,?,?,?,?,?,'extension',?,50)")
+  db.prepare("INSERT INTO test_orders(id,chat_id,username,hours,amount,status,account_id,created_at,approved_at,expires_at,source,customer_contact,order_type,parent_order_id,duration_minutes) VALUES (?,?,?,?,?,'delivered',?,?,?,?,?,?,'extension',?,60)")
     .run(extensionId,order.chat_id,order.username,1,50,accountId,now,now,expires,order.source,order.customer_contact,id);
-  event(id,'extend',50,process.env.V3_PREVIEW==='true'?'Added 50 minutes; mock payment recorded by admin':'Added 50 minutes; payment verified by admin');log('booking.extend',id,extensionId);
+  event(id,'extend',50,process.env.V3_PREVIEW==='true'?'Added 60 minutes; mock payment recorded by admin':'Added 60 minutes; payment verified by admin');log('booking.extend',id,extensionId);
   return getOrder(id)!;
  })();
 }
@@ -70,6 +73,7 @@ export function transferBooking(id:string,newAccountId:string):TestOrder{
   const oldAccountId=order.account_id!,now=new Date().toISOString();
   const reset=db.prepare('SELECT status FROM auto_reset_schedule WHERE account_id=?').get(oldAccountId) as {status:string}|undefined;
   if(reset?.status==='running')throw new Error('Stop the current reset before migrating this booking');
+  assertBookingWindow(newAccountId,now,new Date(Date.parse(order.expires_at!)+120000).toISOString());
   const changed=db.prepare('UPDATE accounts SET sold=1,sold_until=? WHERE id=? AND sold=0').run(order.expires_at,newAccountId);
   if(!changed.changes)throw new Error('New account is no longer available');
   schedule(newAccountId,order.expires_at!);
@@ -90,7 +94,7 @@ export function setRefund(id:string,status:string,note:string){
 
 export function financeReport(){
  const rows=db.prepare("SELECT date(approved_at,'+330 minutes') day,amount,status,order_type FROM test_orders WHERE history_hidden=0 AND approved_at IS NOT NULL AND approved_at >= '2026-09-25T18:30:00.000Z' ORDER BY approved_at DESC").all() as Array<{day:string;amount:number;status:string;order_type:string}>;
- const confirmed=rows.filter(row=>['approved','delivered','expired','delivery_failed','reset_failed','cancelled'].includes(row.status));
+ const confirmed=rows.filter(row=>['payment_late','reserved','reservation_failed','approved','delivered','expired','delivery_failed','reset_failed','cancelled'].includes(row.status));
  const sum=(subset:typeof rows)=>subset.reduce((value,row)=>value+row.amount,0);
  const period=(key:string)=>({period:key,bookings:confirmed.filter(row=>row.day.startsWith(key)).length,revenue:sum(confirmed.filter(row=>row.day.startsWith(key)))});
  const failures=db.prepare("SELECT COUNT(*) n FROM test_orders WHERE history_hidden=0 AND status IN ('rejected','payment_gateway_error')").get() as {n:number};
@@ -106,6 +110,7 @@ export function addExtraTime(id:string,minutes:number):TestOrder{
   const reset=db.prepare('SELECT status FROM auto_reset_schedule WHERE account_id=?').get(accountId) as {status:string}|undefined;
   if(!account?.sold||account.sold_until!==order.expires_at||reset?.status!=='pending')throw new Error('Booking changed or reset has started; refresh before adding time');
   const expires=new Date(new Date(order.expires_at!).getTime()+minutes*60_000).toISOString();
+  assertBookingWindow(accountId,order.expires_at!,new Date(Date.parse(expires)+120000).toISOString());
   db.prepare('UPDATE accounts SET sold_until=? WHERE id=?').run(expires,accountId);
   db.prepare('UPDATE test_orders SET expires_at=?,reminder_notified_at=NULL WHERE id=?').run(expires,id);
   schedule(accountId,expires);
@@ -114,3 +119,4 @@ export function addExtraTime(id:string,minutes:number):TestOrder{
   return getOrder(id)!;
  })();
 }
+

@@ -41,7 +41,7 @@ test('V3 isolated mock checkout and booking lifecycle',async()=>{
   assert.equal(invalidManual.status,400);assert.match(invalidManual.data.error,/start the Telegram bot/);
   const approved=await call(`/api/test-orders/${orderId}/approve`,'POST',{accountId:available[0].id},token);assert.equal(approved.status,200);assert.equal(approved.data.delivered,true);
   const wrongExtension=await call(`/api/test-orders/${orderId}/extend`,'POST',{paymentConfirmed:false},token);assert.equal(wrongExtension.status,400);
-  const extension=await call(`/api/test-orders/${orderId}/extend`,'POST',{paymentConfirmed:true},token);assert.equal(extension.status,200);assert.equal(new Date(extension.data.order.expires_at)-new Date(approved.data.order.expires_at),50*60_000);
+  const extension=await call(`/api/test-orders/${orderId}/extend`,'POST',{paymentConfirmed:true},token);assert.equal(extension.status,200);assert.equal(new Date(extension.data.order.expires_at)-new Date(approved.data.order.expires_at),60*60_000);
   const transferred=await call(`/api/test-orders/${orderId}/transfer`,'POST',{accountId:available[1].id},token);assert.equal(transferred.status,200);assert.equal(transferred.data.order.account_id,available[1].id);
   const oldAccount=(await call('/api/accounts','GET',undefined,token)).data.accounts.find(account=>account.id===available[0].id);assert.equal(oldAccount.sold,true);
   assert.equal((await call(`/api/accounts/${oldAccount.id}/auto-reset`,'DELETE',undefined,token)).status,409);
@@ -76,3 +76,4 @@ test('V3 isolated mock checkout and booking lifecycle',async()=>{
   const backups=await call('/api/v3/ops/backups','GET',undefined,token);assert.ok(backups.data.files.some(file=>file.name===backup.data.name));
  }finally{child.kill('SIGTERM');await pause(150);rmSync(dir,{recursive:true,force:true});}
 });
+

@@ -1,3 +1,4 @@
+import {confirmSlotPayment} from '../lib/v5Bookings';
 import {Router,json,urlencoded,Request} from 'express';
 import {adminAuth} from '../auth';
 import {approveOrder,availableAccounts,claimGatewayPayment,createWebOrder,markDelivered,markGatewayError,PRICES,publicWebOrder,saveGatewayLinks,submitWebProof,getOrder} from '../lib/testOrders';
@@ -45,23 +46,29 @@ checkoutRouter.post('/orders/:id/proof',json({limit:'5mb'}),async(req,res)=>{
  try{if(mockPayment())return res.status(403).json({error:'Payment proof is disabled in the test preview; no payment is collected.'});if(limited(req))return res.status(429).json({error:'Too many attempts. Please wait and try again.'});const order=submitWebProof(req.params.id,String(req.body.accessToken||''),String(req.body.paymentReference||''),String(req.body.proofDataUrl||''));const [adminAlerted,pushAlerts]=await Promise.all([sendAdminClaim(order),sendApprovalPush(order)]);return res.json({status:order.status,adminAlerted,pushAlerts});}
  catch(error){return res.status(400).json({error:error instanceof Error?error.message:'Could not submit payment proof'});}
 });
-checkoutRouter.get('/orders/:id',(req,res)=>{
- try{return res.json(publicWebOrder(req.params.id,String(req.query.token||'')));}
+checkoutRouter.get('/orders/:id',async(req,res)=>{
+ try{
+  const token=String(req.query.token||'');
+  const snapshot=publicWebOrder(req.params.id,token);
+  if(!mockPayment()&&isImbConfigured()&&snapshot.payment_url&&['awaiting_payment_claim','payment_claimed'].includes(String(snapshot.status))){try{await confirmImbPayment(req.params.id);}catch{/* The webhook and next poll retry verified gateway status. */}}
+  return res.json(publicWebOrder(req.params.id,token));}
  catch(error){return res.status(404).json({error:error instanceof Error?error.message:'Order not found'});}
 });
 
 async function confirmImbPayment(orderId:string){
  const order=getOrder(orderId);if(!order||order.source!=='web')throw new Error('Unknown IMB order');
- if(['approved','delivered','delivery_failed','expired'].includes(order.status))return {alreadyProcessed:true};
+ if(['approved','delivered','delivery_failed','expired','reserved','payment_late','reservation_failed'].includes(order.status))return {alreadyProcessed:true};
  const checked=await checkImbOrder(orderId),result=checked.result;
  const verified=(checked.status==='COMPLETED'||checked.status===true)&&result?.status==='SUCCESS'&&result.txnStatus==='COMPLETED';
  if(!verified||result?.orderId!==orderId||Number(result.amount)!==order.amount)throw new Error('IMB has not confirmed this order and exact amount');
  const newlyClaimed=claimGatewayPayment(orderId,result.utr?String(result.utr):null);
  const current=getOrder(orderId)!;
  if(!newlyClaimed&&current.status!=='payment_claimed')return {alreadyProcessed:true};
+ const kind=confirmSlotPayment(orderId);
+ if(kind){void notifyBookingRecorded(getOrder(orderId)!,kind==='extension');return {alreadyProcessed:false,delivered:getOrder(orderId)!.status==='delivered'};}
  for(const account of availableAccounts()){
   try{const details=approveOrder(orderId,account.id);markDelivered(orderId);if(/^\d{1,16}$/.test(details.order.chat_id))void sendCustomerDelivery(details.order,details.email,details.password).catch(()=>false);void notifyBookingRecorded(getOrder(orderId)!);return {alreadyProcessed:false,delivered:true};}
-  catch(error){if(!(error instanceof Error)||!['Account is unavailable','Account is already in use','No IDs are available'].includes(error.message))throw error;}
+  catch(error){if(!(error instanceof Error)||!['Account is unavailable','Account is already in use','No IDs are available','This time overlaps an advance booking or pending extension'].includes(error.message))throw error;}
  }
  if(newlyClaimed){const currentOrder=getOrder(orderId)!;await Promise.all([sendAdminClaim(currentOrder),sendApprovalPush(currentOrder)]);}
  return {alreadyProcessed:false,delivered:false};
@@ -96,3 +103,4 @@ paymentSettingsRouter.put('/',json({limit:'5mb'}),(req,res)=>{
   return res.json(clientConfig());
  }catch(error){return res.status(400).json({error:error instanceof Error?error.message:'Could not save payment settings'});}
 });
+

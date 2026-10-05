@@ -1,3 +1,4 @@
+import {assertBookingWindow,expireHolds} from '../lib/v5Bookings';
 import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { db, AccountRow, ResetHistoryRow, AutoResetRow } from '../db';
@@ -130,6 +131,7 @@ accountsRouter.patch('/:id/sold', (req: Request, res: Response) => {
       return res.status(400).json({ error: 'hours must be between 1 and 24' });
     }
     const soldUntil = new Date(Date.now() + h * 60 * 60 * 1000).toISOString();
+    try{assertBookingWindow(id,new Date().toISOString(),new Date(Date.parse(soldUntil)+120000).toISOString());}catch{return res.status(409).json({error:'This time is reserved by an advance booking or extension payment'});}
     db.prepare('UPDATE accounts SET sold = 1, sold_until = ? WHERE id = ?').run(soldUntil, id);
     return res.json({ ok: true, sold: true, soldUntil });
   }
@@ -183,6 +185,8 @@ accountsRouter.post('/:id/recovery',async(req:Request,res:Response)=>{
   const result=await withResetStopped(id,()=>db.transaction(()=>{
    const now=new Date().toISOString();
    if(action==='retire'){
+    db.prepare("UPDATE test_orders SET status='reservation_failed',error='Account retired; contact support for refund or reassignment' WHERE account_id=? AND status='reserved'").run(id);
+    db.prepare("UPDATE booking_slots SET status='blocked' WHERE account_id=? AND status IN ('hold','reserved')").run(id);
     db.prepare("UPDATE test_orders SET status='cancelled',expires_at=?,error='Account retired by admin: credentials unavailable' WHERE account_id=? AND status IN ('approved','delivered','delivery_failed','reset_failed')").run(now,id);
     db.prepare('DELETE FROM auto_reset_schedule WHERE account_id=?').run(id);
     db.prepare('DELETE FROM accounts WHERE id=?').run(id);
@@ -202,6 +206,8 @@ accountsRouter.post('/:id/recovery',async(req:Request,res:Response)=>{
 // Delete an account (also clears any pending schedule)
 accountsRouter.delete('/:id', (req: Request, res: Response) => {
   const { id } = req.params;
+  expireHolds();
+  if(db.prepare("SELECT 1 FROM booking_slots WHERE account_id=? AND status IN ('hold','reserved')").get(id))return res.status(409).json({error:'This account has future reservations. Use recovery to retire it and preserve paid booking history.'});
   const reserved=db.prepare('SELECT sold FROM accounts WHERE id=?').get(id) as {sold:number}|undefined;
   const reset=db.prepare('SELECT status FROM auto_reset_schedule WHERE account_id=?').get(id) as {status:string}|undefined;
   if(reserved?.sold||reset?.status==='running'||reset?.status==='failed')return res.status(409).json({error:'Use account recovery to stop or permanently remove a stuck ID.'});
@@ -278,3 +284,4 @@ historyRouter.get('/', (_req: Request, res: Response) => {
     history: rows.map((r) => ({ ...r, success: !!r.success })),
   });
 });
+

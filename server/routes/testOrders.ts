@@ -1,3 +1,4 @@
+import {confirmSlotPayment} from '../lib/v5Bookings';
 import {Router,Response} from 'express';
 import {db} from '../db';
 import {adminAuth} from '../auth';
@@ -42,8 +43,9 @@ testOrdersRouter.post('/manual-extension',(req,res)=>{try{
 testOrdersRouter.post('/demo',async(req,res)=>{try{if(process.env.V3_PREVIEW!=='true')return res.status(403).json({error:'Test orders are disabled in production'});const order=createOrder(String(req.body.chatId||'999001'),String(req.body.username||'sample_customer'),Number(req.body.hours||1));res.status(201).json({order});}catch(e){fail(res,e)}});
 testOrdersRouter.post('/:id/claim',async(req,res)=>{try{if(process.env.V3_PREVIEW!=='true')return res.status(403).json({error:'Test claims are disabled in production; payment must be verified by IMB'});const existing=getOrder(req.params.id);if(!existing)throw new Error('Booking not found');const order=claimPayment(req.params.id,existing.chat_id);await sendAdminClaim(order).catch(()=>{});res.json({order});}catch(e){fail(res,e)}});
 testOrdersRouter.post('/:id/reject',async(req,res)=>{try{const order=rejectOrder(req.params.id);await sendCustomerStatus(order,'Payment proof rejected').catch(()=>{});res.json({order})}catch(e){fail(res,e)}});
-testOrdersRouter.post('/:id/approve',async(req,res)=>{try{const details=approveOrder(req.params.id,String(req.body.accountId));if(details.order.source==='web'){
+testOrdersRouter.post('/:id/approve',async(req,res)=>{try{const kind=confirmSlotPayment(req.params.id);if(kind)return res.json({order:getOrder(req.params.id),delivered:kind==='extension'});const details=approveOrder(req.params.id,String(req.body.accountId));if(details.order.source==='web'){
   markDelivered(req.params.id);
   if(/^\d{1,16}$/.test(details.order.chat_id))void sendCustomerDelivery(details.order,details.email,details.password).catch(()=>false);
   const order=getOrder(req.params.id)!;void notifyBookingRecorded(order);return res.json({order,delivered:true});
  }const delivered=await sendCustomerDelivery(details.order,details.email,details.password);if(delivered)markDelivered(req.params.id);else markDeliveryFailed(req.params.id,'Telegram delivery unavailable; account stays reserved.');const order=getOrder(req.params.id)!;void notifyBookingRecorded(order);return res.json({order,delivered});}catch(e){return fail(res,e)}});
+

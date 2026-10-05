@@ -1,3 +1,5 @@
+import {activateReservations,extensionEligibility} from './v5Bookings';
+import {sendCustomerDelivery} from './telegramBot';
 import { db, AutoResetRow } from '../db';
 import { resetAccountPassword } from './passwordReset';
 import { logResetHistory } from './history';
@@ -18,7 +20,7 @@ import { sendBookingEndPush, sendResetResultPush } from '../routes/push';
  * Each attempt-batch result is logged to reset_history (source 'auto').
  */
 
-const CHECK_INTERVAL_MS = 60_000;      // check every minute
+const CHECK_INTERVAL_MS = 1_000;      // check every minute
 const TRIES_PER_BATCH = 3;
 const GAP_BETWEEN_TRIES_MS = 30_000;   // 30s between tries in a batch
 const WAIT_BETWEEN_BATCHES_MS = 10 * 60_000; // 10 minutes
@@ -64,7 +66,8 @@ async function processSchedule(row: AutoResetRow): Promise<void> {
   running.set(accountId,controller);
 
   // Mark running so we don't pick it up again
-  db.prepare(`UPDATE auto_reset_schedule SET status = 'running' WHERE account_id = ?`).run(accountId);
+  const claimed=db.prepare("UPDATE auto_reset_schedule SET status='running' WHERE account_id=? AND status='pending' AND run_at=? AND run_at<=?").run(accountId,row.run_at,new Date().toISOString());
+  if(!claimed.changes){running.delete(accountId);return;}
 
   const acc = db.prepare('SELECT name FROM accounts WHERE id = ?').get(accountId) as { name: string } | undefined;
   const accountName = acc?.name || 'Unknown';
@@ -73,7 +76,7 @@ async function processSchedule(row: AutoResetRow): Promise<void> {
     const ended=db.prepare("SELECT * FROM test_orders WHERE account_id=? AND status IN ('approved','delivered','delivery_failed') AND end_notified_at IS NULL AND expires_at<=? ORDER BY expires_at DESC LIMIT 1").get(accountId,new Date().toISOString()) as import('./testOrders').TestOrder|undefined;
     if(ended){
       db.prepare('UPDATE test_orders SET end_notified_at=? WHERE id=? AND end_notified_at IS NULL').run(new Date().toISOString(),ended.id);
-      await Promise.allSettled([sendAdminBookingEnd(ended),sendBookingEndPush(ended)]);
+      void Promise.allSettled([sendAdminBookingEnd(ended),sendBookingEndPush(ended)]);
     }
     log(`account ${accountId}: starting auto reset (batch 1)`);
     let result = await attemptBatch(accountId,signal);
@@ -118,12 +121,18 @@ async function processSchedule(row: AutoResetRow): Promise<void> {
   }
 }
 
+const reminderInFlight=new Set<string>();
 function tick(): void {
+  for(const delivery of activateReservations())void sendCustomerDelivery(delivery.order,delivery.email,delivery.password).catch(()=>false);
   const now = new Date().toISOString();
   // Send at most one reminder per sample booking, shortly before expiry.
-  const soon=new Date(Date.now()+15*60_000).toISOString();
-  const reminders=db.prepare("SELECT * FROM test_orders WHERE source='telegram' AND status IN ('approved','delivered') AND order_type='booking' AND expires_at>? AND expires_at<=? AND reminder_notified_at IS NULL LIMIT 30").all(now,soon) as import('./testOrders').TestOrder[];
-  for(const order of reminders)sendExpiryReminder(order).then(sent=>{if(sent)db.prepare('UPDATE test_orders SET reminder_notified_at=? WHERE id=? AND reminder_notified_at IS NULL').run(new Date().toISOString(),order.id)}).catch(e=>log(`reminder failed: ${e}`));
+  const soon=new Date(Date.now()+5*60_000).toISOString();
+  const reminders=db.prepare("SELECT * FROM test_orders WHERE chat_id GLOB '[0-9]*' AND hours<>0.5 AND status IN ('approved','delivered') AND order_type='booking' AND expires_at>? AND expires_at<=? AND reminder_notified_at IS NULL LIMIT 30").all(now,soon) as import('./testOrders').TestOrder[];
+  for(const order of reminders){
+    if(reminderInFlight.has(order.id)||!extensionEligibility(order).allowed)continue;
+    reminderInFlight.add(order.id);
+    sendExpiryReminder(order).then(sent=>{if(sent)db.prepare('UPDATE test_orders SET reminder_notified_at=? WHERE id=? AND expires_at=? AND reminder_notified_at IS NULL').run(new Date().toISOString(),order.id,order.expires_at)}).catch(e=>log(`reminder failed: ${e}`)).finally(()=>reminderInFlight.delete(order.id));
+  }
   const due = db
     .prepare(`SELECT account_id, run_at, status, created_at FROM auto_reset_schedule WHERE status = 'pending' AND run_at <= ?`)
     .all(now) as AutoResetRow[];
@@ -136,7 +145,7 @@ function tick(): void {
 
 export function startAutoResetScheduler(): void {
   if(interval)return;
-  log('started (checks every minute)');
+  log('started (checks every second)');
   // Resume work interrupted by a process restart in every environment.
   db.prepare("UPDATE auto_reset_schedule SET status='pending' WHERE status='running'").run();
   tick(); // run once on startup for any already-due schedules
@@ -149,3 +158,4 @@ export function stopAutoResetScheduler(): void {
     interval = null;
   }
 }
+
