@@ -9,7 +9,7 @@ Based on V5, merged in PR #13, on `feature/v4-miniapp-admin`. V5.3 is proposed i
 - Manual booking supports 30 minutes at the same ₹60 rate as customer bookings.
 - Manual password reset stops and waits for an overlapping scheduled reset before running, instead of colliding with the scheduler. Reserved accounts remain protected and must be ended or released through booking controls.
 - Pinch zoom is disabled on admin pages only. The Mini App and checkout keep normal browser zoom behavior.
-- The reset scheduler polls once per minute; the Mini App countdown still ticks locally once per second.
+- The reset scheduler polls every five seconds (down from every second), reducing repeated database scans by 80% while keeping slot activation timely. The Mini App countdown still ticks locally once per second.
 
 ## Validation
 
