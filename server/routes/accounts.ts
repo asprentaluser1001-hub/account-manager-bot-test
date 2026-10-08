@@ -223,7 +223,15 @@ accountsRouter.post('/:id/reset-password', async (req: Request, res: Response) =
   const reserved=db.prepare('SELECT sold FROM accounts WHERE id=?').get(id) as {sold:number}|undefined;
   if(reserved?.sold)return res.status(409).json({error:'Use End booking or Release to reset a reserved account safely.'});
   const acc = db.prepare('SELECT name FROM accounts WHERE id = ?').get(id) as { name: string } | undefined;
-  const result = await resetAccountPassword(id);
+  let result: Awaited<ReturnType<typeof resetAccountPassword>>;
+  try {
+    // Stop a pending/running scheduled reset before starting a manual one.
+    // Both paths share a lock; otherwise the button can collide with the scheduler.
+    stopScheduledReset(id);
+    result = await withResetStopped(id, () => resetAccountPassword(id));
+  } catch (error) {
+    return res.status(409).json({ error: error instanceof Error ? error.message : 'Could not start password reset' });
+  }
 
   logResetHistory({
     accountId: id,

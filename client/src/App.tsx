@@ -46,6 +46,24 @@ function vapidBytes(value:string):Uint8Array<ArrayBuffer>{
 export default function App() {
   const preview = usePreviewMode();
   useEffect(() => {
+    const path = window.location.pathname;
+    if (path.startsWith('/miniapp') || path.startsWith('/checkout')) return;
+    const preventPinch = (event: TouchEvent) => {
+      if (event.touches.length > 1) event.preventDefault();
+    };
+    const preventSafariGesture = (event: Event) => event.preventDefault();
+    document.addEventListener('touchmove', preventPinch, { passive: false });
+    document.addEventListener('gesturestart', preventSafariGesture);
+    document.addEventListener('gesturechange', preventSafariGesture);
+    document.addEventListener('gestureend', preventSafariGesture);
+    return () => {
+      document.removeEventListener('touchmove', preventPinch);
+      document.removeEventListener('gesturestart', preventSafariGesture);
+      document.removeEventListener('gesturechange', preventSafariGesture);
+      document.removeEventListener('gestureend', preventSafariGesture);
+    };
+  }, []);
+  useEffect(() => {
     document.documentElement.classList.toggle('preview-mode', preview);
     return () => document.documentElement.classList.remove('preview-mode');
   }, [preview]);
