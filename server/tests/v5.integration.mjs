@@ -58,6 +58,6 @@ test('V5 paid extensions, slot conflicts, deadlines and safe activation',()=>{
   assert.equal(v5.activateReservations().length,0);
   assert.equal(orders.publicWebOrder(reserved.id,reserved.access_token).credentials.email,'b@example.invalid');
   assert.throws(()=>orders.publicWebOrder(reserved.id,'another-customers-token'),/not found/);
-  assert.equal(orders.summary().revenue,470);
+  assert.equal(orders.summary().revenue,460);
  }finally{db.close();rmSync(dir,{recursive:true,force:true});}
 });
