@@ -3,7 +3,7 @@ import { db } from '../db';
 import {assertBookingWindow,releaseHold,availability} from './v5Bookings';
 
 export type TestOrder = { id:string; chat_id:string; username:string; hours:number; amount:number; status:string; account_id:string|null; created_at:string; claimed_at:string|null; approved_at:string|null; expires_at:string|null; delivered_at:string|null; error:string|null; source:string; access_token:string|null; customer_contact:string|null; payment_reference:string|null; proof_data_url:string|null; has_proof?:number; history_hidden:number };
-export const PRICES: Record<number,number> = {0.5:70,1:100,2:150,3:200,168:750,720:1800};
+export const PRICES: Record<number,number> = {0.5:60,1:100,2:150,3:200,168:750,720:1800};
 
 db.exec(`CREATE TABLE IF NOT EXISTS test_orders (
  id TEXT PRIMARY KEY, chat_id TEXT NOT NULL, username TEXT NOT NULL, hours INTEGER NOT NULL,

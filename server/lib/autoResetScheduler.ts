@@ -20,7 +20,7 @@ import { sendBookingEndPush, sendResetResultPush } from '../routes/push';
  * Each attempt-batch result is logged to reset_history (source 'auto').
  */
 
-const CHECK_INTERVAL_MS = 1_000;      // check every minute
+const CHECK_INTERVAL_MS = 5_000;      // reduce repeated DB scans, keep slot activation timely
 const TRIES_PER_BATCH = 3;
 const GAP_BETWEEN_TRIES_MS = 30_000;   // 30s between tries in a batch
 const WAIT_BETWEEN_BATCHES_MS = 10 * 60_000; // 10 minutes
@@ -145,7 +145,7 @@ function tick(): void {
 
 export function startAutoResetScheduler(): void {
   if(interval)return;
-  log('started (checks every second)');
+  log('started (checks every 5 seconds)');
   // Resume work interrupted by a process restart in every environment.
   db.prepare("UPDATE auto_reset_schedule SET status='pending' WHERE status='running'").run();
   tick(); // run once on startup for any already-due schedules

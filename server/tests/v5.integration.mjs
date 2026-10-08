@@ -14,7 +14,7 @@ test('V5 paid extensions, slot conflicts, deadlines and safe activation',()=>{
  const paid=(o)=>orders.claimPayment(o.id,o.chat_id);
  try{
   add('a');add('b');add('c');
-  assert.equal(orders.PRICES[0.5],70);
+  assert.equal(orders.PRICES[0.5],60);
   const half=orders.createWebOrder('Half Customer','',0.5,'123').order;paid(half);orders.approveOrder(half.id,'a');orders.markDelivered(half.id);
   assert.equal(v5.extensionEligibility(orders.getOrder(half.id)).allowed,false);
   assert.throws(()=>v5.createExtensionOrder(orders.getOrder(half.id)),/30-minute/);
@@ -58,6 +58,6 @@ test('V5 paid extensions, slot conflicts, deadlines and safe activation',()=>{
   assert.equal(v5.activateReservations().length,0);
   assert.equal(orders.publicWebOrder(reserved.id,reserved.access_token).credentials.email,'b@example.invalid');
   assert.throws(()=>orders.publicWebOrder(reserved.id,'another-customers-token'),/not found/);
-  assert.equal(orders.summary().revenue,470);
+  assert.equal(orders.summary().revenue,460);
  }finally{db.close();rmSync(dir,{recursive:true,force:true});}
 });
