@@ -65,3 +65,11 @@ Telegram displays its own **Start** button before a customer first talks to a bo
 After deploying the updated client and server, restart the existing service. The server adds the recovery-password column to the existing SQLite database automatically. Back up the live database before upgrading. These changes do not recover a forgotten external-site password automatically.
 
 Validation: build `server` and `client` with `npm run build`, then run `node --test tests/*.mjs` from `server`. The recovery suite uses only temporary databases, sample credentials and a mocked external browser; it never changes live customer passwords.
+
+## v5.3 changes
+
+- Customer mini app: live remaining-time countdown and progress bar while a booking is active; ended bookings show an ended state.
+- Failed password reset: keep the account quarantined, show the affected order a contact-admin message, notify the linked Telegram customer, and block that Telegram customer from new bot bookings until the reset is resolved. Manual reset failures also quarantine the ID. Anonymous web checkout cannot identify a returning person across fresh sessions; the failed ID remains unavailable there.
+- Manual booking: add a 30-minute option (₹50 suggested; admin can edit the verified amount). Auto-reset starts 30 minutes after saving.
+- Admin: prevent touch pinch and trackpad pinch zoom while the dashboard is open.
+- Performance: stop repeat account/history requests every second after an expired timer; refresh on a 30-second cadence and index recent booking history.

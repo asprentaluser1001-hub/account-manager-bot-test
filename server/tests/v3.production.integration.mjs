@@ -55,6 +55,15 @@ test('production-mode migration preserves an existing booking and manual extensi
   assert.match(alert.body,/Offline Customer · ₹100/);
   assert.match(alert.body,/Share access privately/);
   assert.ok(!alert.body.includes('not-a-live-password'));
+  db.prepare('INSERT INTO accounts(id,name,email,password,sold,sold_until,created_at) VALUES (?,?,?,?,0,NULL,?)').run('half-hour-account','Half Hour','half@example.invalid','not-a-live-password',now);
+  const short=orders.createManualBooking('Half Hour Customer','',0.5,50,'half-hour-account','123456');
+  assert.equal(new Date(short.expires_at)-new Date(short.approved_at),30*60_000);
+  assert.equal(db.prepare('SELECT run_at FROM auto_reset_schedule WHERE account_id=?').get('half-hour-account').run_at,short.expires_at);
+  orders.markReset('half-hour-account',false,'Test reset failure');
+  assert.equal(orders.getOrder(short.id).status,'reset_failed');
+  assert.equal(orders.availableAccounts().some(a=>a.id==='half-hour-account'),false);
+  assert.equal(orders.customerHasFailedReset('123456'),true);
+  assert.throws(()=>orders.createOrder('123456','Half Hour Customer',1),/Contact the admin/);
   const extendedAlert=bookingAlert(orders.getOrder(booking.id),true);
   assert.equal(extendedAlert.title,'Booking extended');
   assert.match(extendedAlert.body,/Test Customer · ₹50/);

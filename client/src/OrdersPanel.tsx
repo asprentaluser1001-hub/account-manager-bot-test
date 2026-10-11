@@ -52,7 +52,9 @@ const complete = new Set([
 ]);
 const money = (amount: number) => `₹${amount.toLocaleString("en-IN")}`;
 const duration = (hours: number) =>
-  hours === 168
+  hours === 0.5
+    ? "30 minutes"
+    : hours === 168
     ? "1 week"
     : hours === 720
       ? "1 month"
@@ -76,6 +78,7 @@ const indiaDay = (value: Date) => {
   return `${get("year")}-${get("month")}-${get("day")}`;
 };
 const prices: Record<number, number> = {
+  0.5: 50,
   1: 100,
   2: 150,
   3: 200,

@@ -2,7 +2,7 @@ import { db, AutoResetRow } from '../db';
 import { resetAccountPassword } from './passwordReset';
 import { logResetHistory } from './history';
 import { markReset } from './testOrders';
-import { sendAdminBookingEnd, sendAdminResetResult, sendExpiryReminder } from './telegramBot';
+import { sendAdminBookingEnd, sendAdminResetResult, sendCustomerStatus, sendExpiryReminder } from './telegramBot';
 import { sendBookingEndPush, sendResetResultPush } from '../routes/push';
 
 /**
@@ -98,6 +98,7 @@ async function processSchedule(row: AutoResetRow): Promise<void> {
     db.prepare(`UPDATE auto_reset_schedule SET status = ? WHERE account_id = ?`)
       .run(result.success ? 'done' : 'failed', accountId);
     markReset(accountId,result.success,result.error);
+    if(!result.success)await notifyAffectedCustomer(accountId);
     await Promise.allSettled([sendAdminResetResult(accountName,result.success),sendResetResultPush(accountId,accountName,result.success,row.run_at)]);
 
     log(`account ${accountId}: auto reset ${result.success ? 'SUCCESS' : 'GAVE UP'}`);
@@ -112,10 +113,16 @@ async function processSchedule(row: AutoResetRow): Promise<void> {
     });
     db.prepare(`UPDATE auto_reset_schedule SET status = 'failed' WHERE account_id = ?`).run(accountId);
     markReset(accountId,false,err instanceof Error ? err.message : 'Unknown error');
+    await notifyAffectedCustomer(accountId);
     await Promise.allSettled([sendAdminResetResult(accountName,false),sendResetResultPush(accountId,accountName,false,row.run_at)]);
   } finally {
     running.delete(accountId);
   }
+}
+
+async function notifyAffectedCustomer(accountId:string):Promise<void>{
+ const order=db.prepare("SELECT * FROM test_orders WHERE account_id=? AND status='reset_failed' AND chat_id GLOB '[0-9]*' ORDER BY approved_at DESC LIMIT 1").get(accountId) as import('./testOrders').TestOrder|undefined;
+ if(order)await sendCustomerStatus(order,'Password reset failed. This ID is blocked from new bookings. Please contact the admin before booking again.').catch(()=>false);
 }
 
 function tick(): void {

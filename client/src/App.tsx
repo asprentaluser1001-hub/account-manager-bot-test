@@ -345,6 +345,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
   const [soldOpenId, setSoldOpenId] = useState<string | null>(null);
   const [soldHours, setSoldHours] = useState(1);
   const [nowTick, setNowTick] = useState(Date.now());
+  useEffect(()=>{const prevent=(e:Event)=>e.preventDefault();const touch=(e:TouchEvent)=>{if(e.touches.length>1)e.preventDefault()};const wheel=(e:WheelEvent)=>{if(e.ctrlKey)e.preventDefault()};document.addEventListener('gesturestart',prevent,{passive:false});document.addEventListener('gesturechange',prevent,{passive:false});document.addEventListener('touchmove',touch,{passive:false});document.addEventListener('wheel',wheel,{passive:false});return()=>{document.removeEventListener('gesturestart',prevent);document.removeEventListener('gesturechange',prevent);document.removeEventListener('touchmove',touch);document.removeEventListener('wheel',wheel)}},[]);
 
   const authHeaders = useCallback(
     () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }),
@@ -352,7 +353,6 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
   );
 
   const load = useCallback(async () => {
-    setLoading(true);
     setError('');
     try {
       const [accRes, histRes] = await Promise.all([
@@ -372,7 +372,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
     }
   }, [authHeaders, onLogout]);
 
-  useEffect(() => { load(); }, [load, activeTab]);
+  useEffect(() => { load(); const timer=setInterval(()=>{if(!document.hidden)load()},30000); return()=>clearInterval(timer); }, [load]);
 
   useEffect(()=>{
     if(!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window)){setPushState('unsupported');return;}
@@ -385,14 +385,8 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
     return () => clearInterval(t);
   }, []);
 
-  // When any sold timer passes its end, reload so the server unsells it.
-  useEffect(() => {
-    const anyExpired = accounts.some(
-      (a) => a.sold && a.soldUntil && new Date(a.soldUntil).getTime() <= nowTick
-    );
-    if (anyExpired) load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nowTick]);
+  // The scheduler owns expiry; the periodic refresh picks up its result.
+  // Avoid firing account/history requests on every second after a timer ends.
 
   async function addAccount() {
     if (!name.trim() || !email.trim() || !password.trim()) { setAddError('All fields are required'); return; }

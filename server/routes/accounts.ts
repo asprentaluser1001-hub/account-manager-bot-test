@@ -158,7 +158,7 @@ accountsRouter.post('/:id/release', async (req: Request, res: Response) => {
     source: 'manual',
   });
 
-  if (!result.success) return res.status(500).json({ error: result.error || 'Password reset failed. Account remains reserved.' });
+  if (!result.success) {markReset(id,false,result.error);return res.status(500).json({ error: result.error || 'Password reset failed. Account remains reserved.' });}
 
   // A completed manual release replaces the pending expiry reset.
   db.prepare('DELETE FROM auto_reset_schedule WHERE account_id = ?').run(id);
@@ -228,7 +228,11 @@ accountsRouter.post('/:id/reset-password', async (req: Request, res: Response) =
     source: 'manual',
   });
 
-  if (!result.success) return res.status(500).json({ error: result.error || 'Password reset failed' });
+  if (!result.success) {
+    db.prepare("UPDATE accounts SET sold=1 WHERE id=?").run(id);
+    db.prepare("INSERT INTO auto_reset_schedule(account_id,run_at,status,created_at) VALUES (?,?,'failed',?) ON CONFLICT(account_id) DO UPDATE SET status='failed'").run(id,new Date().toISOString(),new Date().toISOString());
+    return res.status(500).json({ error: result.error || 'Password reset failed. Account is blocked until recovery.' });
+  }
   return res.json({ success: true, newPassword: result.newPassword });
 });
 

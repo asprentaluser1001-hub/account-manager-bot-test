@@ -12,6 +12,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS test_orders (
 );
 CREATE INDEX IF NOT EXISTS idx_test_orders_status ON test_orders(status);
 CREATE INDEX IF NOT EXISTS idx_test_orders_account ON test_orders(account_id);
+CREATE INDEX IF NOT EXISTS idx_test_orders_created ON test_orders(created_at DESC);
 `);
 for (const [name, definition] of [
  ['source', "TEXT NOT NULL DEFAULT 'telegram'"],
@@ -57,7 +58,11 @@ export function hideOrderHistory(ids:string[]):number {
   return unique.length;
  })();
 }
+export function customerHasFailedReset(chatId:string):boolean {
+ return !!db.prepare("SELECT 1 FROM test_orders WHERE chat_id=? AND status='reset_failed' LIMIT 1").get(chatId);
+}
 export function createOrder(chatId:string,username:string,hours:number):TestOrder {
+ if(customerHasFailedReset(chatId))throw new Error('Your previous ID needs admin attention. Contact the admin before booking again.');
  if (!PRICES[hours] || !/^\d{1,20}$/.test(chatId) || username.length > 64) throw new Error('Invalid order');
  if(!availableAccounts().length) throw new Error('No IDs are available right now. Please try again later or contact support.');
  const id='BOT-'+randomUUID().slice(0,8).toUpperCase(),accessToken=randomBytes(24).toString('base64url'),now=new Date().toISOString();
@@ -74,7 +79,7 @@ export function createWebOrder(name:string,contact:string,hours:number):{order:T
 }
 export function createManualBooking(name:string,contact:string,hours:number,amount:number,accountId:string,chatId:string):TestOrder {
  name=name.trim();contact=contact.trim();
- if(name.length<2||name.length>64||contact.length>100||!PRICES[hours]||!Number.isSafeInteger(amount)||amount<0||amount>100000)throw new Error('Enter a valid customer, duration and amount');
+ if(name.length<2||name.length>64||contact.length>100||!(hours===0.5||PRICES[hours])||!Number.isSafeInteger(amount)||amount<0||amount>100000)throw new Error('Enter a valid customer, duration and amount');
  if(chatId||process.env.V3_PREVIEW==='true'){
   if(!/^\d{1,20}$/.test(chatId)||!db.prepare('SELECT chat_id FROM bot_visitors WHERE chat_id=?').get(chatId))throw new Error('Ask the customer to start the Telegram bot and send you their /id number');
   if(!process.env.TELEGRAM_BOT_TOKEN)throw new Error('Telegram bot is not configured');
