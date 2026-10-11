@@ -4,10 +4,11 @@ import { db, AccountRow, ResetHistoryRow, AutoResetRow } from '../db';
 import { adminAuth } from '../auth';
 import { resetAccountPassword } from '../lib/passwordReset';
 import { logResetHistory } from '../lib/history';
-import { markReset } from '../lib/testOrders';
+import { blockCustomerForAccount, markReset } from '../lib/testOrders';
 import {stopScheduledReset} from '../lib/autoResetScheduler';
 import {withResetStopped} from '../lib/resetJobs';
 import {recordAccountRecovery} from '../lib/v3Features';
+import {sendCustomerResetFailure} from '../lib/telegramBot';
 
 /**
  * Account routes. All protected by adminAuth.
@@ -158,7 +159,7 @@ accountsRouter.post('/:id/release', async (req: Request, res: Response) => {
     source: 'manual',
   });
 
-  if (!result.success) return res.status(500).json({ error: result.error || 'Password reset failed. Account remains reserved.' });
+  if (!result.success) {markReset(id,false,result.error);await sendCustomerResetFailure(id).catch(()=>false);return res.status(500).json({ error: result.error || 'Password reset failed. Account remains reserved.' });}
 
   // A completed manual release replaces the pending expiry reset.
   db.prepare('DELETE FROM auto_reset_schedule WHERE account_id = ?').run(id);
@@ -182,6 +183,7 @@ accountsRouter.post('/:id/recovery',async(req:Request,res:Response)=>{
   stopScheduledReset(id);
   const result=await withResetStopped(id,()=>db.transaction(()=>{
    const now=new Date().toISOString();
+   if(action==='stop'||action==='retry')blockCustomerForAccount(id,'Account recovery requires admin approval');
    if(action==='retire'){
     db.prepare("UPDATE test_orders SET status='cancelled',expires_at=?,error='Account retired by admin: credentials unavailable' WHERE account_id=? AND status IN ('approved','delivered','delivery_failed','reset_failed')").run(now,id);
     db.prepare('DELETE FROM auto_reset_schedule WHERE account_id=?').run(id);
@@ -195,6 +197,7 @@ accountsRouter.post('/:id/recovery',async(req:Request,res:Response)=>{
    recordAccountRecovery(id,action,account.name);
    return {ok:true,message:action==='retire'?'Account permanently removed. Booking history kept.':action==='retry'?'Recovered password saved. Reset queued.':'Reset stopped. Account remains unavailable.'};
   })());
+  if(action==='stop')await sendCustomerResetFailure(id).catch(()=>false);
   return res.json(result);
  }catch(e){return res.status(409).json({error:e instanceof Error?e.message:'Recovery failed'});}
 });
@@ -228,7 +231,11 @@ accountsRouter.post('/:id/reset-password', async (req: Request, res: Response) =
     source: 'manual',
   });
 
-  if (!result.success) return res.status(500).json({ error: result.error || 'Password reset failed' });
+  if (!result.success) {
+    db.prepare("UPDATE accounts SET sold=1 WHERE id=?").run(id);
+    db.prepare("INSERT INTO auto_reset_schedule(account_id,run_at,status,created_at) VALUES (?,?,'failed',?) ON CONFLICT(account_id) DO UPDATE SET status='failed'").run(id,new Date().toISOString(),new Date().toISOString());
+    return res.status(500).json({ error: result.error || 'Password reset failed. Account is blocked until recovery.' });
+  }
   return res.json({ success: true, newPassword: result.newPassword });
 });
 

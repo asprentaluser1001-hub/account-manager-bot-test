@@ -73,3 +73,6 @@ body {
   }
   .v3-main { padding-bottom: calc(150px + env(safe-area-inset-bottom)); }
 }
+
+.booking-time{margin:18px 0;text-align:left}.booking-time-label{display:flex;justify-content:space-between;gap:12px;color:#cbd5e1;font-size:13px}.booking-time-track{height:9px;background:#303641;border-radius:99px;overflow:hidden;margin-top:9px}.booking-time-track span{display:block;height:100%;background:linear-gradient(90deg,#ff2f80,#8b5cf6);border-radius:99px;transition:width 1s linear}
+.v3-shell{touch-action:manipulation}

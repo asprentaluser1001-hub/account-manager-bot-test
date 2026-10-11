@@ -1,8 +1,9 @@
 import {Router,json,urlencoded,Request} from 'express';
+import {randomBytes} from 'crypto';
 import {adminAuth} from '../auth';
-import {approveOrder,availableAccounts,claimGatewayPayment,createWebOrder,markDelivered,markGatewayError,PRICES,publicWebOrder,saveGatewayLinks,submitWebProof,getOrder} from '../lib/testOrders';
+import {approveOrder,availableAccounts,customerIsBlocked,claimGatewayPayment,createWebOrder,markDelivered,markGatewayError,PRICES,publicWebOrder,saveGatewayLinks,submitWebProof,getOrder} from '../lib/testOrders';
 import {db} from '../db';
-import {sendAdminClaim} from '../lib/telegramBot';
+import {sendAdminClaim,setting as botSetting} from '../lib/telegramBot';
 import {sendApprovalPush} from './push';
 import {notifyBookingRecorded} from '../lib/bookingNotifications';
 import {checkImbOrder,createImbOrder,isImbConfigured} from '../lib/imbPayment';
@@ -10,9 +11,15 @@ import {checkImbOrder,createImbOrder,isImbConfigured} from '../lib/imbPayment';
 db.exec(`CREATE TABLE IF NOT EXISTS payment_settings (key TEXT PRIMARY KEY,value TEXT NOT NULL);`);
 const getSetting=(key:string)=>(db.prepare('SELECT value FROM payment_settings WHERE key=?').get(key) as {value:string}|undefined)?.value||'';
 const saveSetting=(key:string,value:string)=>db.prepare('INSERT INTO payment_settings(key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value').run(key,value);
+const supportUrl=(value:string):string=>{
+ const contact=value.trim();
+ if(/^@?[a-zA-Z][a-zA-Z0-9_]{4,31}$/.test(contact))return `https://t.me/${contact.replace(/^@/,'')}`;
+ try{const url=new URL(contact);return url.protocol==='https:'&&!url.username&&!url.password?url.toString():'';}catch{return '';}
+};
+export const supportContactUrl=()=>supportUrl(getSetting('support'))||supportUrl(botSetting('support_username'));
 const plans=Object.entries(PRICES).map(([hours,amount])=>({hours:Number(hours),amount}));
 const mockPayment=()=>process.env.V3_PREVIEW==='true' && process.env.PAYMENT_MODE==='mock';
-const clientConfig=()=>({brand:getSetting('brand')||'FlingRoulette',payeeName:mockPayment()?'':getSetting('payee_name'),upiId:mockPayment()?'':getSetting('upi_id'),qrDataUrl:mockPayment()?'':getSetting('qr_data_url'),support:getSetting('support'),plans,available:availableAccounts().length>0,gatewayEnabled:!mockPayment()&&isImbConfigured(),mockPayment:mockPayment()});
+const clientConfig=()=>({brand:getSetting('brand')||'FlingRoulette',payeeName:mockPayment()?'':getSetting('payee_name'),upiId:mockPayment()?'':getSetting('upi_id'),qrDataUrl:mockPayment()?'':getSetting('qr_data_url'),support:getSetting('support'),supportUrl:supportContactUrl(),plans,available:availableAccounts().length>0,gatewayEnabled:!mockPayment()&&isImbConfigured(),mockPayment:mockPayment()});
 
 const attempts=new Map<string,{count:number;reset:number}>();
 function limited(req:Request){
@@ -27,7 +34,10 @@ checkoutRouter.post('/orders',json({limit:'32kb'}),async(req,res)=>{
  try{
   if(limited(req))return res.status(429).json({error:'Too many attempts. Please wait and try again.'});
   if(!mockPayment() && !isImbConfigured())return res.status(503).json({error:'IMB payment is temporarily unavailable. Please contact support.'});
-  const result=createWebOrder(String(req.body.name||''),'',Number(req.body.hours));
+  const cookie=/^(?:.*; )?fr_customer=([A-Za-z0-9_-]{32})(?:;.*)?$/.exec(req.headers.cookie||'');
+  const customerKey=cookie?.[1]||randomBytes(24).toString('base64url');
+  const result=createWebOrder(String(req.body.name||''),'',Number(req.body.hours),customerKey);
+  res.cookie('fr_customer',customerKey,{httpOnly:true,sameSite:'lax',secure:!mockPayment(),path:'/api/checkout',maxAge:365*24*60*60*1000});
   if(!mockPayment() && isImbConfigured()){
    try{
     const base=process.env.PUBLIC_CHECKOUT_URL||`${req.protocol}://${req.get('host')}/checkout`;
@@ -39,7 +49,7 @@ checkoutRouter.post('/orders',json({limit:'32kb'}),async(req,res)=>{
   }
   return res.status(201).json({orderId:result.order.id,accessToken:result.accessToken,amount:result.order.amount,status:result.order.status});
  }
- catch(error){return res.status(400).json({error:error instanceof Error?error.message:'Could not create order'});}
+ catch(error){const message=error instanceof Error?error.message:'Could not create order';return res.status(message.startsWith('Booking paused')?403:400).json({error:message});}
 });
 checkoutRouter.post('/orders/:id/proof',json({limit:'5mb'}),async(req,res)=>{
  try{if(mockPayment())return res.status(403).json({error:'Payment proof is disabled in the test preview; no payment is collected.'});if(limited(req))return res.status(429).json({error:'Too many attempts. Please wait and try again.'});const order=submitWebProof(req.params.id,String(req.body.accessToken||''),String(req.body.paymentReference||''),String(req.body.proofDataUrl||''));const [adminAlerted,pushAlerts]=await Promise.all([sendAdminClaim(order),sendApprovalPush(order)]);return res.json({status:order.status,adminAlerted,pushAlerts});}
@@ -59,6 +69,10 @@ async function confirmImbPayment(orderId:string){
  const newlyClaimed=claimGatewayPayment(orderId,result.utr?String(result.utr):null);
  const current=getOrder(orderId)!;
  if(!newlyClaimed&&current.status!=='payment_claimed')return {alreadyProcessed:true};
+ if(customerIsBlocked('web',current.customer_key||'')){
+  if(newlyClaimed)await Promise.all([sendAdminClaim(current),sendApprovalPush(current)]);
+  return {alreadyProcessed:false,delivered:false};
+ }
  for(const account of availableAccounts()){
   try{approveOrder(orderId,account.id);markDelivered(orderId);void notifyBookingRecorded(getOrder(orderId)!);return {alreadyProcessed:false,delivered:true};}
   catch(error){if(!(error instanceof Error)||!['Account is unavailable','Account is already in use','No IDs are available'].includes(error.message))throw error;}
@@ -90,6 +104,7 @@ paymentSettingsRouter.put('/',json({limit:'5mb'}),(req,res)=>{
   if(mockPayment()&&(payeeName||upiId||qrDataUrl))throw new Error('Real payment details cannot be configured in the V3 test preview.');
   if(brand.length<2||brand.length>40)throw new Error('Brand name must be 2–40 characters');
   if(payeeName.length>80||support.length>100)throw new Error('Payment details are too long');
+  if(support&&!supportUrl(support))throw new Error('Enter a Telegram username or an HTTPS support URL');
   if(upiId&&!/^[\w.\-]+@[\w.\-]+$/.test(upiId))throw new Error('Enter a valid UPI ID');
   if(qrDataUrl){const match=/^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/=]+)$/.exec(qrDataUrl);if(!match||Buffer.from(match[2],'base64').length>3*1024*1024)throw new Error('QR must be a PNG, JPEG or WebP image under 3 MB');}
   saveSetting('brand',brand);saveSetting('payee_name',payeeName);saveSetting('upi_id',upiId);saveSetting('support',support);saveSetting('qr_data_url',qrDataUrl);
