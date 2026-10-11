@@ -348,7 +348,6 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
   const [soldOpenId, setSoldOpenId] = useState<string | null>(null);
   const [soldHours, setSoldHours] = useState(1);
   const [nowTick, setNowTick] = useState(Date.now());
-  useEffect(()=>{const prevent=(e:Event)=>e.preventDefault();const touch=(e:TouchEvent)=>{if(e.touches.length>1)e.preventDefault()};const wheel=(e:WheelEvent)=>{if(e.ctrlKey)e.preventDefault()};document.addEventListener('gesturestart',prevent,{passive:false});document.addEventListener('gesturechange',prevent,{passive:false});document.addEventListener('touchmove',touch,{passive:false});document.addEventListener('wheel',wheel,{passive:false});return()=>{document.removeEventListener('gesturestart',prevent);document.removeEventListener('gesturechange',prevent);document.removeEventListener('touchmove',touch);document.removeEventListener('wheel',wheel)}},[]);
 
   const authHeaders = useCallback(
     () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }),

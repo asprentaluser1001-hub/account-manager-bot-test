@@ -112,3 +112,5 @@ body {
 .v4-shell .admin-panel,.v4-shell .v3-overview-card{background:rgba(255,255,252,.68)}
 .booking-time{margin:18px 0;text-align:left}.booking-time-label{display:flex;justify-content:space-between;gap:12px;color:#cbd5e1;font-size:13px}.booking-time-track{height:9px;background:#303641;border-radius:99px;overflow:hidden;margin-top:9px}.booking-time-track span{display:block;height:100%;background:linear-gradient(90deg,#ff2f80,#8b5cf6);border-radius:99px;transition:width 1s linear}
 .v3-shell{touch-action:manipulation}
+/* iOS Safari zooms a page when a focused form control renders below 16px. */
+@media(max-width:767px){.v3-shell input:not([type=checkbox]):not([type=radio]),.v3-shell select,.v3-shell textarea{font-size:16px}}
