@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from 'crypto';
 import { db } from '../db';
 import {assertBookingWindow,releaseHold,availability} from './v5Bookings';
 
-export type TestOrder = { id:string; chat_id:string; username:string; hours:number; amount:number; status:string; account_id:string|null; created_at:string; claimed_at:string|null; approved_at:string|null; expires_at:string|null; delivered_at:string|null; error:string|null; source:string; access_token:string|null; customer_contact:string|null; payment_reference:string|null; proof_data_url:string|null; has_proof?:number; history_hidden:number };
+export type TestOrder = { account_name?:string|null; account_email?:string|null; customer_key?:string|null; id:string; chat_id:string; username:string; hours:number; amount:number; status:string; account_id:string|null; created_at:string; claimed_at:string|null; approved_at:string|null; expires_at:string|null; delivered_at:string|null; error:string|null; source:string; access_token:string|null; customer_contact:string|null; payment_reference:string|null; proof_data_url:string|null; has_proof?:number; history_hidden:number };
 export const PRICES: Record<number,number> = {0.5:70,1:100,2:150,3:200,168:750,720:1800};
 
 db.exec(`CREATE TABLE IF NOT EXISTS test_orders (
@@ -13,6 +13,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS test_orders (
 );
 CREATE INDEX IF NOT EXISTS idx_test_orders_status ON test_orders(status);
 CREATE INDEX IF NOT EXISTS idx_test_orders_account ON test_orders(account_id);
+CREATE INDEX IF NOT EXISTS idx_test_orders_created ON test_orders(created_at DESC);
 `);
 for (const [name, definition] of [
  ['source', "TEXT NOT NULL DEFAULT 'telegram'"],
@@ -30,6 +31,7 @@ for (const [name, definition] of [
  ['parent_order_id', 'TEXT'],
  ['duration_minutes','INTEGER'],
  ['reminder_notified_at','TEXT'],
+ ['customer_key','TEXT'],
 ] as const) {
  const columns=db.prepare('PRAGMA table_info(test_orders)').all() as Array<{name:string}>;
  if(!columns.some(column=>column.name===name))db.exec(`ALTER TABLE test_orders ADD COLUMN ${name} ${definition}`);
@@ -42,7 +44,7 @@ export function claimGatewayPayment(id:string,utr:string|null){
  return db.prepare("UPDATE test_orders SET status='payment_claimed',claimed_at=?,payment_reference=? WHERE id=? AND source='web' AND status='awaiting_payment_claim'").run(new Date().toISOString(),utr,id).changes>0;
 }
 export function getOrder(id:string):TestOrder|undefined {return db.prepare('SELECT * FROM test_orders WHERE id = ?').get(id) as TestOrder|undefined;}
-export function recentOrders():TestOrder[]{return db.prepare(`SELECT id,chat_id,username,hours,amount,status,account_id,created_at,claimed_at,approved_at,expires_at,delivered_at,error,source,customer_contact,payment_reference,order_type,parent_order_id,history_hidden,CASE WHEN proof_data_url IS NOT NULL AND length(proof_data_url)>0 THEN 1 ELSE 0 END AS has_proof FROM test_orders WHERE history_hidden=0 ORDER BY created_at DESC LIMIT 200`).all() as TestOrder[];}
+export function recentOrders():TestOrder[]{return db.prepare(`SELECT o.id,o.chat_id,o.username,o.hours,o.amount,o.status,o.account_id,a.name AS account_name,a.email AS account_email,o.created_at,o.claimed_at,o.approved_at,o.expires_at,o.delivered_at,o.error,o.source,o.customer_contact,o.payment_reference,o.order_type,o.parent_order_id,o.history_hidden,CASE WHEN o.proof_data_url IS NOT NULL AND length(o.proof_data_url)>0 THEN 1 ELSE 0 END AS has_proof FROM test_orders o LEFT JOIN accounts a ON a.id=o.account_id WHERE o.history_hidden=0 ORDER BY o.created_at DESC LIMIT 200`).all() as TestOrder[];}
 if(!(db.prepare('PRAGMA table_info(test_orders)').all() as Array<{name:string}>).some(column=>column.name==='history_hidden'))db.exec('ALTER TABLE test_orders ADD COLUMN history_hidden INTEGER NOT NULL DEFAULT 0');
 export function hideOrderHistory(ids:string[]):number {
  if(!Array.isArray(ids)||!ids.length||ids.length>200||ids.some(id=>typeof id!=='string'||!/^(?:BOT|WEB|MAN|EXT|MAN-EXT)-[A-F0-9]{8}$/.test(id)))throw new Error('Select valid booking history entries');
@@ -60,24 +62,68 @@ export function hideOrderHistory(ids:string[]):number {
   return unique.length;
  })();
 }
+db.exec(`CREATE TABLE IF NOT EXISTS booking_blocks (
+ id TEXT PRIMARY KEY, kind TEXT NOT NULL, identity TEXT NOT NULL,
+ order_id TEXT NOT NULL, account_id TEXT NOT NULL, customer_name TEXT NOT NULL,
+ reason TEXT NOT NULL, blocked_at TEXT NOT NULL, approved_at TEXT,
+ UNIQUE(kind,identity)
+);
+CREATE TABLE IF NOT EXISTS booking_block_migrations (version INTEGER PRIMARY KEY);`);
+function holdCustomer(order:TestOrder,reason:string):void {
+ const kind=/^\d{1,20}$/.test(order.chat_id)?'telegram':'web';
+ const identity=kind==='web'?order.customer_key:order.chat_id;
+ if(!identity||(kind==='telegram'&&!/^\d{1,20}$/.test(identity)))return;
+ db.prepare(`INSERT INTO booking_blocks(id,kind,identity,order_id,account_id,customer_name,reason,blocked_at,approved_at)
+ VALUES (?,?,?,?,?,?,?,?,NULL) ON CONFLICT(kind,identity) DO UPDATE SET
+ order_id=excluded.order_id,account_id=excluded.account_id,customer_name=excluded.customer_name,
+ reason=excluded.reason,blocked_at=excluded.blocked_at,approved_at=NULL`)
+ .run(randomUUID(),kind,identity,order.id,order.account_id,order.username,reason.slice(0,300),new Date().toISOString());
+}
+// Preserve holds from failed bookings that predate this table, once only.
+if(!db.prepare('SELECT 1 FROM booking_block_migrations WHERE version=1').get())db.transaction(()=>{
+ const legacy=db.prepare("SELECT * FROM test_orders WHERE status='reset_failed' AND COALESCE(order_type,'booking')='booking' ORDER BY approved_at").all() as TestOrder[];
+ for(const order of legacy)holdCustomer(order,order.error||'Previous password reset failed');
+ db.prepare('INSERT INTO booking_block_migrations(version) VALUES (1)').run();
+})();
+export function customerIsBlocked(kind:'telegram'|'web',identity:string):boolean {
+ return !!identity&&!!db.prepare('SELECT 1 FROM booking_blocks WHERE kind=? AND identity=? AND approved_at IS NULL').get(kind,identity);
+}
+export function customerHasFailedReset(chatId:string):boolean {return customerIsBlocked('telegram',chatId);}
+export function blockCustomerForAccount(accountId:string,reason:string):void {
+ const order=db.prepare("SELECT * FROM test_orders WHERE account_id=? AND COALESCE(order_type,'booking')='booking' AND status IN ('approved','delivered','delivery_failed','reset_failed','cancelled') ORDER BY approved_at DESC LIMIT 1").get(accountId) as TestOrder|undefined;
+ if(order)holdCustomer(order,reason);
+}
+export type BookingBlock={id:string;kind:string;order_id:string;account_id:string;customer_name:string;reason:string;blocked_at:string;account_name:string|null;account_sold:number|null;reset_status:string|null};
+export function listBookingBlocks():BookingBlock[]{return db.prepare(`SELECT b.id,b.kind,b.order_id,b.account_id,b.customer_name,b.reason,b.blocked_at,a.name AS account_name,a.sold AS account_sold,s.status AS reset_status FROM booking_blocks b LEFT JOIN accounts a ON a.id=b.account_id LEFT JOIN auto_reset_schedule s ON s.account_id=b.account_id WHERE b.approved_at IS NULL ORDER BY b.blocked_at DESC LIMIT 200`).all() as BookingBlock[];}
+export function approveCustomerBlock(id:string):void {
+ const block=db.prepare('SELECT account_id FROM booking_blocks WHERE id=? AND approved_at IS NULL').get(id) as {account_id:string}|undefined;
+ if(!block)throw new Error('Customer hold is no longer active');
+ const account=db.prepare('SELECT sold FROM accounts WHERE id=?').get(block.account_id) as {sold:number}|undefined;
+ const reset=db.prepare('SELECT status FROM auto_reset_schedule WHERE account_id=?').get(block.account_id) as {status:string}|undefined;
+ if(account?.sold||['pending','running','failed'].includes(reset?.status||''))throw new Error('Recover or retire the affected ID before approving this customer');
+ db.prepare('UPDATE booking_blocks SET approved_at=? WHERE id=? AND approved_at IS NULL').run(new Date().toISOString(),id);
+}
 export function createOrder(chatId:string,username:string,hours:number):TestOrder {
+ if(customerHasFailedReset(chatId))throw new Error('Your booking is paused until the admin approves you. Please contact the admin.');
  if (!PRICES[hours] || !/^\d{1,20}$/.test(chatId) || username.length > 64) throw new Error('Invalid order');
  if(!availability(hours).some(a=>!a.used&&!a.resetPending)) throw new Error('No IDs are available right now. Please try again later or contact support.');
  const id='BOT-'+randomUUID().slice(0,8).toUpperCase(),accessToken=randomBytes(24).toString('base64url'),now=new Date().toISOString();
  db.prepare("INSERT INTO test_orders (id,chat_id,username,hours,amount,status,created_at,source,access_token) VALUES (?,?,?,?,?,?,?,'telegram',?)").run(id,chatId,username,hours,PRICES[hours],'awaiting_payment_claim',now,accessToken);
  return getOrder(id)!;
 }
-export function createWebOrder(name:string,contact:string,hours:number,chatId='web'):{order:TestOrder;accessToken:string}{
+export function createWebOrder(name:string,contact:string,hours:number,customerKey=randomBytes(24).toString('base64url'),chatId='web'):{order:TestOrder;accessToken:string}{
  name=name.trim();contact=contact.trim();
- if(!PRICES[hours]||name.length<2||name.length>64||contact.length>100||(chatId!=='web'&&!/^\d{1,16}$/.test(chatId)))throw new Error('Enter a valid name');
+ if(!PRICES[hours]||name.length<2||name.length>64||contact.length>100||!customerKey)throw new Error('Enter a valid name');
+ if(customerIsBlocked('web',customerKey)||(/^\d{1,20}$/.test(chatId)&&customerHasFailedReset(chatId)))throw new Error('Booking paused. Please contact the admin for approval before booking again.');
  if(!availability(hours).some(a=>!a.used&&!a.resetPending))throw new Error('Currently unavailable. Please try again later.');
  const id='WEB-'+randomUUID().slice(0,8).toUpperCase(),accessToken=randomBytes(24).toString('base64url'),now=new Date().toISOString();
- db.prepare("INSERT INTO test_orders (id,chat_id,username,hours,amount,status,created_at,source,access_token,customer_contact) VALUES (?,?,?,?,?,?,?,'web',?,?)").run(id,chatId,name,hours,PRICES[hours],'awaiting_payment_claim',now,accessToken,contact);
+ db.prepare("INSERT INTO test_orders (id,chat_id,username,hours,amount,status,created_at,source,access_token,customer_contact,customer_key) VALUES (?,?,?,?,?,?,?,'web',?,?,?)").run(id,chatId,name,hours,PRICES[hours],'awaiting_payment_claim',now,accessToken,contact,customerKey);
  return {order:getOrder(id)!,accessToken};
 }
 export function createManualBooking(name:string,contact:string,hours:number,amount:number,accountId:string,chatId:string):TestOrder {
  name=name.trim();contact=contact.trim();
- if(name.length<2||name.length>64||contact.length>100||!PRICES[hours]||!Number.isSafeInteger(amount)||amount<0||amount>100000)throw new Error('Enter a valid customer, duration and amount');
+ if(name.length<2||name.length>64||contact.length>100||!(hours===0.5||PRICES[hours])||!Number.isSafeInteger(amount)||amount<0||amount>100000)throw new Error('Enter a valid customer, duration and amount');
+ if(chatId&&customerHasFailedReset(chatId))throw new Error('This customer needs admin approval before another booking');
  if(chatId||process.env.V3_PREVIEW==='true'){
   if(!/^\d{1,20}$/.test(chatId)||!db.prepare('SELECT chat_id FROM bot_visitors WHERE chat_id=?').get(chatId))throw new Error('Ask the customer to start the Telegram bot and send you their /id number');
   if(!process.env.TELEGRAM_BOT_TOKEN)throw new Error('Telegram bot is not configured');
@@ -160,6 +206,7 @@ export function approveOrder(id:string,accountId:string):{order:TestOrder;email:
  const txn=db.transaction(()=>{
   const order=getOrder(id);if(!order||order.status!=='payment_claimed')throw new Error('Order is not awaiting approval');
   if(db.prepare('SELECT 1 FROM booking_slots WHERE order_id=?').get(id))throw new Error('Use the slot payment confirmation flow for this order');
+  if((/^\d{1,20}$/.test(order.chat_id)&&customerHasFailedReset(order.chat_id))||(order.source==='web'&&customerIsBlocked('web',order.customer_key||'')))throw new Error('Customer needs admin approval before another booking');
   if(!availableAccounts().some(a=>a.id===accountId))throw new Error('Account is unavailable');
   const account=db.prepare('SELECT email,password FROM accounts WHERE id=?').get(accountId) as {email:string;password:string}|undefined;
   if(!account)throw new Error('Account missing');
@@ -175,6 +222,7 @@ export function approveOrder(id:string,accountId:string):{order:TestOrder;email:
 export function markDelivered(id:string){db.prepare("UPDATE test_orders SET status='delivered',delivered_at=? WHERE id=? AND status='approved'").run(new Date().toISOString(),id);}
 export function markDeliveryFailed(id:string,error:string){db.prepare("UPDATE test_orders SET status='delivery_failed',error=? WHERE id=? AND status='approved'").run(error.slice(0,300),id);}
 export function markReset(accountId:string,success:boolean,error?:string){
+ if(!success)blockCustomerForAccount(accountId,error||'Password reset failed');
  db.prepare("UPDATE test_orders SET status=?,error=? WHERE account_id=? AND status IN ('approved','delivered','delivery_failed','reset_failed')").run(success?'expired':'reset_failed',success?null:error||'Reset failed',accountId);
  if(success)db.prepare('UPDATE accounts SET sold=0,sold_until=NULL WHERE id=?').run(accountId);
 }

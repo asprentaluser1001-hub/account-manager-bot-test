@@ -4,7 +4,7 @@ import { db, AutoResetRow } from '../db';
 import { resetAccountPassword } from './passwordReset';
 import { logResetHistory } from './history';
 import { markReset } from './testOrders';
-import { sendAdminBookingEnd, sendAdminResetResult, sendExpiryReminder } from './telegramBot';
+import { sendAdminBookingEnd, sendAdminResetResult, sendCustomerResetFailure, sendExpiryReminder } from './telegramBot';
 import { sendBookingEndPush, sendResetResultPush } from '../routes/push';
 
 /**
@@ -20,7 +20,7 @@ import { sendBookingEndPush, sendResetResultPush } from '../routes/push';
  * Each attempt-batch result is logged to reset_history (source 'auto').
  */
 
-const CHECK_INTERVAL_MS = 1_000;      // check every minute
+const CHECK_INTERVAL_MS = 5_000;      // activate advance slots promptly without polling every second
 const TRIES_PER_BATCH = 3;
 const GAP_BETWEEN_TRIES_MS = 30_000;   // 30s between tries in a batch
 const WAIT_BETWEEN_BATCHES_MS = 10 * 60_000; // 10 minutes
@@ -101,6 +101,7 @@ async function processSchedule(row: AutoResetRow): Promise<void> {
     db.prepare(`UPDATE auto_reset_schedule SET status = ? WHERE account_id = ?`)
       .run(result.success ? 'done' : 'failed', accountId);
     markReset(accountId,result.success,result.error);
+    if(!result.success)await sendCustomerResetFailure(accountId);
     await Promise.allSettled([sendAdminResetResult(accountName,result.success),sendResetResultPush(accountId,accountName,result.success,row.run_at)]);
 
     log(`account ${accountId}: auto reset ${result.success ? 'SUCCESS' : 'GAVE UP'}`);
@@ -115,6 +116,7 @@ async function processSchedule(row: AutoResetRow): Promise<void> {
     });
     db.prepare(`UPDATE auto_reset_schedule SET status = 'failed' WHERE account_id = ?`).run(accountId);
     markReset(accountId,false,err instanceof Error ? err.message : 'Unknown error');
+    await sendCustomerResetFailure(accountId);
     await Promise.allSettled([sendAdminResetResult(accountName,false),sendResetResultPush(accountId,accountName,false,row.run_at)]);
   } finally {
     running.delete(accountId);
@@ -145,7 +147,7 @@ function tick(): void {
 
 export function startAutoResetScheduler(): void {
   if(interval)return;
-  log('started (checks every second)');
+  log('started (checks every five seconds)');
   // Resume work interrupted by a process restart in every environment.
   db.prepare("UPDATE auto_reset_schedule SET status='pending' WHERE status='running'").run();
   tick(); // run once on startup for any already-due schedules

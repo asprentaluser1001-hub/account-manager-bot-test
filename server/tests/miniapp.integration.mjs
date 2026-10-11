@@ -23,7 +23,7 @@ test('Mini App verifies Telegram identity and keeps customers separated',async()
  const {miniAppRouter}=require('../dist/routes/miniApp.js');
  const {db}=require('../dist/db.js');
  const {verifyMiniAppData}=require('../dist/lib/miniAppAuth.js');
-  const {createWebOrder}=require('../dist/lib/testOrders.js');
+  const {createWebOrder,markReset,customerHasFailedReset}=require('../dist/lib/testOrders.js');
   const {saveSetting}=require('../dist/lib/telegramBot.js');
  let server;
  try{
@@ -65,6 +65,16 @@ test('Mini App verifies Telegram identity and keeps customers separated',async()
   db.prepare('UPDATE test_orders SET hours=0.5 WHERE id=?').run(orderId);
   const blocked=await call('/api/miniapp/extend',alice,'POST',{orderId});assert.equal(blocked.status,409);assert.match(blocked.data.error,/30-minute/);
   assert.equal((await call('/api/miniapp/me',alice)).data.active.extensionRequested,false);
+  saveSetting('support_username','AdminSupport42');
+  markReset('sample',false,'External password verification failed');
+  assert.equal(customerHasFailedReset('12345'),true);
+  const held=await call('/api/miniapp/me',alice);
+  assert.equal(held.data.blocked,true);
+  assert.equal(held.data.supportUsername,'AdminSupport42');
+  assert.equal(held.data.recent.find(item=>item.id===orderId).status,'reset_failed');
+  const retry=await call('/api/miniapp/book',alice,'POST',{hours:1});
+  assert.equal(retry.status,400);
+  assert.match(retry.data.error,/Booking paused/);
   assert.equal(createWebOrder('Regular Customer','',1).order.chat_id,'web');
  }finally{if(server)await new Promise(resolve=>server.close(resolve));db.close();rmSync(dir,{recursive:true,force:true})}
 });

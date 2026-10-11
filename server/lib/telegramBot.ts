@@ -1,6 +1,6 @@
 import {db} from '../db';
 import {PRICES} from './testOrders';
-import {approveOrder,availableAccounts,claimPayment,createOrder,getOrder,markDelivered,markDeliveryFailed,rejectOrder,TestOrder} from './testOrders';
+import {approveOrder,availableAccounts,customerHasFailedReset,claimPayment,createOrder,getOrder,markDelivered,markDeliveryFailed,rejectOrder,TestOrder} from './testOrders';
 const token=process.env.TELEGRAM_BOT_TOKEN||'';
 const adminId=process.env.TELEGRAM_ADMIN_ID||'';
 const checkoutUrl=process.env.PUBLIC_CHECKOUT_URL||'';
@@ -51,6 +51,7 @@ async function showAvailability(chatId:string,messageId?:number){
  }else await say(chatId,text,menu());
 }
 async function showPlans(chatId:string){
+ if(customerHasFailedReset(chatId)){await say(chatId,'Your booking is paused after a failed password reset until the admin approves you. Please contact the admin.',buttons([[supportButton()],[homeButton]]));return;}
  if(!availableAccounts().length){await showAvailability(chatId);return;}
  await say(chatId,`Choose your duration. Time starts when the admin approves. ${sandboxMode?'This is a test; no payment is collected.':'Payment is verified manually before access is sent.'}`,buttons(Object.entries(PRICES).map(([h,p])=>[{text:`${duration(Number(h))} · ₹${p}`,callback_data:`hours:${h}`}]).concat([[supportButton() as any],[homeButton]])));
 }
@@ -133,9 +134,13 @@ export async function sendCustomerDelivery(order:TestOrder,email:string,password
  try {const preview=process.env.V3_PREVIEW==='true';await say(order.chat_id,`${preview?'TEST ACCESS':'ACCESS'} · ${order.id}\nLogin: ${email}\nPassword: ${password}\nEnds: ${order.expires_at}${order.hours===0.5?'\n30-minute bookings cannot be extended.':'\nYou can extend by 1 hour from the booking page for this ID.'}${preview?'\nOnly sample credentials are used in this sandbox.':''}`,buttons([[homeButton]]));return true;}
  catch(e){console.error('[Bot] Customer delivery failed',e);return false;}
 }
-export async function sendCustomerStatus(order:TestOrder,status:string){
+export async function sendCustomerStatus(order:TestOrder,status:string,contactAdmin=false){
  if(!token||!/^\d{1,20}$/.test(order.chat_id))return false;
- try{await say(order.chat_id,`${sandboxMode?'TEST ':''}ORDER ${order.id}\nStatus: ${status}${sandboxMode?'\nNo real payment is collected in this preview.':''}`);return true;}catch(e){console.error('[Bot] Status notification failed',e);return false;}
+ try{const link=contactAdmin&&setting('support_username')?`\nContact admin: https://t.me/${setting('support_username')}`:'';await say(order.chat_id,`${sandboxMode?'TEST ':''}ORDER ${order.id}\nStatus: ${status}${link}${sandboxMode?'\nNo real payment is collected in this preview.':''}`,contactAdmin?buttons([[supportButton()],[homeButton]]):undefined);return true;}catch(e){console.error('[Bot] Status notification failed',e);return false;}
+}
+export async function sendCustomerResetFailure(accountId:string):Promise<boolean>{
+ const order=db.prepare("SELECT * FROM test_orders WHERE account_id=? AND status='reset_failed' AND chat_id GLOB '[0-9]*' ORDER BY approved_at DESC LIMIT 1").get(accountId) as TestOrder|undefined;
+ return order?sendCustomerStatus(order,'Password reset failed. Your next booking is paused until the admin approves you. Please contact the admin.',true):false;
 }
 export async function sendExpiryReminder(order:TestOrder){
  if(!token||!/^\d{1,20}$/.test(order.chat_id)||order.hours===0.5)return false;
@@ -183,6 +188,7 @@ async function handleCallback(c:any){
   } else if(data==='support'){
    await say(chatId,'The admin has not set a support username yet. Please try again later.',buttons([[homeButton]]));
   } else if(data.startsWith('hours:')){
+   if(customerHasFailedReset(chatId)){await showPlans(chatId);return;}
    const hours=Number(data.slice(6));
    if(checkoutUrl){
     const link=new URL('/checkout',checkoutUrl);link.searchParams.set('hours',String(hours));link.searchParams.set('new','1');

@@ -3,7 +3,7 @@ import {Router,json,Request,Response,NextFunction} from 'express';
 import {adminAuth} from '../auth';
 import {db} from '../db';
 import {verifyMiniAppData,MiniAppUser} from '../lib/miniAppAuth';
-import {createWebOrder,getOrder,markGatewayError,PRICES,saveGatewayLinks,TestOrder} from '../lib/testOrders';
+import {createWebOrder,customerHasFailedReset,getOrder,markGatewayError,PRICES,saveGatewayLinks,TestOrder} from '../lib/testOrders';
 import {createImbOrder,isImbConfigured} from '../lib/imbPayment';
 import {setting} from '../lib/telegramBot';
 import {pendingMiniAppExtensions} from '../lib/miniAppExtensions';
@@ -30,7 +30,7 @@ miniAppRouter.get('/me',(req:CustomerRequest,res)=>{
  const reservations=db.prepare("SELECT o.id,o.hours,o.status,s.starts_at AS startsAt,s.ends_at AS endsAt FROM test_orders o JOIN booking_slots s ON s.order_id=o.id WHERE o.chat_id=? AND o.status='reserved' ORDER BY s.starts_at").all(user.id);
  const eligibility=active?extensionEligibility(active):null;
  const pendingPayment=active?db.prepare("SELECT 1 FROM booking_slots s JOIN test_orders o ON o.id=s.order_id WHERE o.parent_order_id=? AND s.status='hold' AND s.kind='extension' AND s.starts_at=?").get(active.id,active.expires_at):null;
- res.json({user,slots,reservations,available:slots.some(slot=>!slot.used&&!slot.resetPending),prices:PRICES,supportUsername:/^[a-zA-Z][a-zA-Z0-9_]{4,31}$/.test(support)?support:null,active:active?{id:active.id,hours:active.hours,expiresAt:active.expires_at,status:active.status,credentials,extensionAllowed:!!pendingPayment||eligibility?.allowed,extensionReason:eligibility?.reason,extensionPending:!!pendingPayment,extensionRequested:false}:null,recent:rows.filter(row=>confirmed.includes(row.status)).map(row=>({id:row.id,hours:row.hours,amount:row.amount,status:row.status,createdAt:row.created_at,expiresAt:row.expires_at}))});
+ res.json({user,slots,reservations,available:slots.some(slot=>!slot.used&&!slot.resetPending),blocked:customerHasFailedReset(user.id),prices:PRICES,supportUsername:/^[a-zA-Z][a-zA-Z0-9_]{4,31}$/.test(support)?support:null,active:active?{id:active.id,hours:active.hours,startsAt:active.approved_at,expiresAt:active.expires_at,status:active.status,credentials,extensionAllowed:!!pendingPayment||eligibility?.allowed,extensionReason:eligibility?.reason,extensionPending:!!pendingPayment,extensionRequested:false}:null,recent:rows.filter(row=>confirmed.includes(row.status)).map(row=>({id:row.id,hours:row.hours,amount:row.amount,status:row.status,createdAt:row.created_at,expiresAt:row.expires_at}))});
 });
 miniAppRouter.post('/book',async(req:CustomerRequest,res)=>{
  const user=req.miniUser!,hours=Number(req.body?.hours);
@@ -40,7 +40,7 @@ miniAppRouter.post('/book',async(req:CustomerRequest,res)=>{
  if(!preview&&!isImbConfigured())return res.status(503).json({error:'Payment checkout is unavailable'});
  try{
   const active=activeFor(user.id);if(req.body?.advance&&active?.expires_at&&Date.parse(String(req.body.startsAt))<Date.parse(active.expires_at))throw new Error('Advance slot must start after your current booking');
-  const {order,accessToken}=req.body?.advance?createAdvanceOrder(user.name,user.id,hours,String(req.body.accountId||''),String(req.body.startsAt||'')):createWebOrder(user.name,'',hours,user.id);
+  const {order,accessToken}=req.body?.advance?createAdvanceOrder(user.name,user.id,hours,String(req.body.accountId||''),String(req.body.startsAt||'')):createWebOrder(user.name,'',hours,user.id,user.id);
   const destination=new URL('/checkout',process.env.PUBLIC_CHECKOUT_URL||`${req.protocol}://${req.get('host')}`);
   destination.searchParams.set('order',order.id);destination.searchParams.set('token',accessToken);destination.searchParams.set('amount',String(order.amount));destination.searchParams.set('hours',String(hours));
   if(!preview){

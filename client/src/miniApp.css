@@ -33,3 +33,4 @@
 
 
 .mini-credentials,.mini-slot{padding:12px 0;border-top:1px solid #ddd;overflow-wrap:anywhere}.mini-credentials p,.mini-slot p{margin:8px 0}.mini-feature select{display:block;margin:12px 0;padding:10px;border-radius:10px;width:100%}
+.mini-progress span{transition:width 1s linear}

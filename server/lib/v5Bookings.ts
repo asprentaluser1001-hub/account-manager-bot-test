@@ -1,6 +1,6 @@
 import {randomBytes,randomUUID} from 'crypto';
 import {db} from '../db';
-import {getOrder,PRICES,TestOrder} from './testOrders';
+import {customerHasFailedReset,customerIsBlocked,getOrder,PRICES,TestOrder} from './testOrders';
 
 // Holds are persisted so checkout retries and process restarts cannot double-book.
 db.exec(`CREATE TABLE IF NOT EXISTS booking_slots (
@@ -44,6 +44,7 @@ export function availability(hours=1){
 }
 export function createAdvanceOrder(name:string,chatId:string,hours:number,accountId:string,startsAt:string){
  if(!PRICES[hours]||!/^\d{1,20}$/.test(chatId)||name.trim().length<2)throw new Error('Invalid booking');
+ if(customerHasFailedReset(chatId))throw new Error('Booking paused. Please contact the admin for approval before booking again.');
  return db.transaction(()=>{
   const option=availability(hours).find(a=>a.id===accountId);
   const start=Date.parse(startsAt),now=Date.now();
@@ -86,6 +87,11 @@ export function confirmSlotPayment(id:string):'extension'|'advance'|null{
   const order=getOrder(id)!;
   if(slot.status==='reserved'||slot.status==='fulfilled')return slot.kind as 'extension'|'advance';
   if(order.status!=='payment_claimed')throw new Error('Payment has not been verified');
+  if((/^\d{1,20}$/.test(order.chat_id)&&customerHasFailedReset(order.chat_id))||customerIsBlocked('web',order.customer_key||'')){
+   releaseHold(id);
+   db.prepare("UPDATE test_orders SET status='payment_late',approved_at=?,error='Customer approval required; contact admin for refund or reassignment' WHERE id=?").run(new Date().toISOString(),id);
+   return slot.kind as 'extension'|'advance';
+  }
   if(slot.status!=='hold'){
    db.prepare("UPDATE test_orders SET status='payment_late',approved_at=?,error='Payment confirmed after the slot/payment deadline; contact support for refund or reassignment' WHERE id=? AND status='payment_claimed'").run(new Date().toISOString(),id);
    return slot.kind as 'extension'|'advance';

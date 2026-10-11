@@ -110,3 +110,5 @@ body {
 .v4-shell::before{content:"";position:fixed;inset:0;height:100vh;height:100lvh;z-index:0;pointer-events:none;background:#eef2e8 url('/backgrounds/botanical-v4.png') center top/cover no-repeat}
 .v4-shell>.v3-main,.v4-shell>.v3-glass{position:relative;z-index:1}
 .v4-shell .admin-panel,.v4-shell .v3-overview-card{background:rgba(255,255,252,.68)}
+.booking-time{margin:18px 0;text-align:left}.booking-time-label{display:flex;justify-content:space-between;gap:12px;color:#cbd5e1;font-size:13px}.booking-time-track{height:9px;background:#303641;border-radius:99px;overflow:hidden;margin-top:9px}.booking-time-track span{display:block;height:100%;background:linear-gradient(90deg,#ff2f80,#8b5cf6);border-radius:99px;transition:width 1s linear}
+.v3-shell{touch-action:manipulation}

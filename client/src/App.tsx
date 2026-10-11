@@ -348,6 +348,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
   const [soldOpenId, setSoldOpenId] = useState<string | null>(null);
   const [soldHours, setSoldHours] = useState(1);
   const [nowTick, setNowTick] = useState(Date.now());
+  useEffect(()=>{const prevent=(e:Event)=>e.preventDefault();const touch=(e:TouchEvent)=>{if(e.touches.length>1)e.preventDefault()};const wheel=(e:WheelEvent)=>{if(e.ctrlKey)e.preventDefault()};document.addEventListener('gesturestart',prevent,{passive:false});document.addEventListener('gesturechange',prevent,{passive:false});document.addEventListener('touchmove',touch,{passive:false});document.addEventListener('wheel',wheel,{passive:false});return()=>{document.removeEventListener('gesturestart',prevent);document.removeEventListener('gesturechange',prevent);document.removeEventListener('touchmove',touch);document.removeEventListener('wheel',wheel)}},[]);
 
   const authHeaders = useCallback(
     () => ({ 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }),
@@ -356,6 +357,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
 
   const load = useCallback(async () => {
     if (!hasLoadedAccounts.current) setLoading(true);
+    setError('');
     try {
       const [accRes, histRes] = await Promise.all([
         fetch('/api/accounts', { headers: authHeaders() }),
@@ -376,7 +378,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
     }
   }, [authHeaders, onLogout]);
 
-  useEffect(() => { load(); }, [load, activeTab]);
+  useEffect(() => { load(); const timer=setInterval(()=>{if(!document.hidden)load()},30000); return()=>clearInterval(timer); }, [load]);
 
   useEffect(()=>{
     if(!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window)){setPushState('unsupported');return;}
@@ -388,15 +390,6 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
     const t = setInterval(() => setNowTick(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
-
-  // Refresh reset status without remounting the account cards. A scheduled
-  // reset can take several minutes, so an expired sold timer must not trigger
-  // a full reload every second while it is pending, running or failed.
-  useEffect(() => {
-    if (activeTab !== 'accounts' && activeTab !== 'overview') return;
-    const interval = setInterval(() => { if (!document.hidden) void load(); }, 20_000);
-    return () => clearInterval(interval);
-  }, [activeTab, load]);
 
   async function addAccount() {
     if (!name.trim() || !email.trim() || !password.trim()) { setAddError('All fields are required'); return; }
@@ -565,7 +558,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
         <div className="max-w-3xl mx-auto px-4 sm:px-5 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <BrandMark />
-            <div><h1 className="font-heading text-lg font-bold text-slate-900">FlingRoulette</h1><p className="text-[10px] font-semibold tracking-[0.16em] uppercase text-slate-400">Admin</p></div>
+            <div><h1 className="font-heading text-lg font-bold text-slate-900">FlingRoulette</h1><p className="text-[10px] font-semibold tracking-[0.16em] uppercase text-slate-400">Admin · V{APP_VERSION}</p></div>
           </div>
           <div className="flex items-center gap-1">
             <button onClick={onLogout} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"><Icon path={ICONS.logout} className="w-4 h-4" /><span className="hidden sm:inline">Log out</span></button>
