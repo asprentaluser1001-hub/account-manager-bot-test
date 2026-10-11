@@ -4,7 +4,7 @@ import { db, AccountRow, ResetHistoryRow, AutoResetRow } from '../db';
 import { adminAuth } from '../auth';
 import { resetAccountPassword } from '../lib/passwordReset';
 import { logResetHistory } from '../lib/history';
-import { markReset } from '../lib/testOrders';
+import { blockCustomerForAccount, markReset } from '../lib/testOrders';
 import {stopScheduledReset} from '../lib/autoResetScheduler';
 import {withResetStopped} from '../lib/resetJobs';
 import {recordAccountRecovery} from '../lib/v3Features';
@@ -182,6 +182,7 @@ accountsRouter.post('/:id/recovery',async(req:Request,res:Response)=>{
   stopScheduledReset(id);
   const result=await withResetStopped(id,()=>db.transaction(()=>{
    const now=new Date().toISOString();
+   if(action==='stop'||action==='retry')blockCustomerForAccount(id,'Account recovery requires admin approval');
    if(action==='retire'){
     db.prepare("UPDATE test_orders SET status='cancelled',expires_at=?,error='Account retired by admin: credentials unavailable' WHERE account_id=? AND status IN ('approved','delivered','delivery_failed','reset_failed')").run(now,id);
     db.prepare('DELETE FROM auto_reset_schedule WHERE account_id=?').run(id);

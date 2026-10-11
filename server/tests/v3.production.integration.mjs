@@ -67,7 +67,27 @@ test('production-mode migration preserves an existing booking and manual extensi
   assert.equal(orders.getOrder(short.id).status,'reset_failed');
   assert.equal(orders.availableAccounts().some(a=>a.id==='half-hour-account'),false);
   assert.equal(orders.customerHasFailedReset('123456'),true);
-  assert.throws(()=>orders.createOrder('123456','Half Hour Customer',1),/Contact the admin/);
+  assert.throws(()=>orders.createOrder('123456','Half Hour Customer',1),/admin approves/);
+  orders.markReset('half-hour-account',true);
+  assert.equal(orders.customerHasFailedReset('123456'),true,'a successful reset does not approve the customer');
+  const telegramHold=orders.listBookingBlocks().find(block=>block.order_id===short.id);
+  assert.throws(()=>orders.approveCustomerBlock(telegramHold.id),/Recover or retire/);
+  db.prepare("UPDATE auto_reset_schedule SET status='done' WHERE account_id='half-hour-account'").run();
+  orders.approveCustomerBlock(telegramHold.id);
+  assert.equal(orders.customerHasFailedReset('123456'),false);
+
+  db.prepare('INSERT INTO accounts(id,name,email,password,sold,sold_until,created_at) VALUES (?,?,?,?,0,NULL,?)').run('web-account','Web Account','web@example.invalid','test-only',now);
+  const web=orders.createWebOrder('Web Customer','',1,'browser-identity-for-test');
+  db.prepare("UPDATE test_orders SET status='payment_claimed' WHERE id=?").run(web.order.id);
+  orders.approveOrder(web.order.id,'web-account');
+  orders.markReset('web-account',false,'Test changed password');
+  assert.throws(()=>orders.createWebOrder('Web Customer','',1,'browser-identity-for-test'),/Booking paused/);
+  orders.markReset('web-account',true);
+  db.prepare("UPDATE auto_reset_schedule SET status='done' WHERE account_id='web-account'").run();
+  assert.throws(()=>orders.createWebOrder('Web Customer','',1,'browser-identity-for-test'),/Booking paused/);
+  const webHold=orders.listBookingBlocks().find(block=>block.order_id===web.order.id);
+  orders.approveCustomerBlock(webHold.id);
+  assert.ok(orders.createWebOrder('Web Customer','',1,'browser-identity-for-test').order.id);
   const extendedAlert=bookingAlert(orders.getOrder(booking.id),true);
   assert.equal(extendedAlert.title,'Booking extended');
   assert.match(extendedAlert.body,/Test Customer · ₹50/);

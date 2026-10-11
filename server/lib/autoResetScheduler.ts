@@ -122,7 +122,7 @@ async function processSchedule(row: AutoResetRow): Promise<void> {
 
 async function notifyAffectedCustomer(accountId:string):Promise<void>{
  const order=db.prepare("SELECT * FROM test_orders WHERE account_id=? AND status='reset_failed' AND chat_id GLOB '[0-9]*' ORDER BY approved_at DESC LIMIT 1").get(accountId) as import('./testOrders').TestOrder|undefined;
- if(order)await sendCustomerStatus(order,'Password reset failed. This ID is blocked from new bookings. Please contact the admin before booking again.').catch(()=>false);
+ if(order)await sendCustomerStatus(order,'Password reset failed. Your next booking is paused until the admin approves you. Please contact the admin.').catch(()=>false);
 }
 
 function tick(): void {

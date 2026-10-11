@@ -1,6 +1,7 @@
 import {Router,json,urlencoded,Request} from 'express';
+import {randomBytes} from 'crypto';
 import {adminAuth} from '../auth';
-import {approveOrder,availableAccounts,claimGatewayPayment,createWebOrder,markDelivered,markGatewayError,PRICES,publicWebOrder,saveGatewayLinks,submitWebProof,getOrder} from '../lib/testOrders';
+import {approveOrder,availableAccounts,customerIsBlocked,claimGatewayPayment,createWebOrder,markDelivered,markGatewayError,PRICES,publicWebOrder,saveGatewayLinks,submitWebProof,getOrder} from '../lib/testOrders';
 import {db} from '../db';
 import {sendAdminClaim} from '../lib/telegramBot';
 import {sendApprovalPush} from './push';
@@ -27,7 +28,10 @@ checkoutRouter.post('/orders',json({limit:'32kb'}),async(req,res)=>{
  try{
   if(limited(req))return res.status(429).json({error:'Too many attempts. Please wait and try again.'});
   if(!mockPayment() && !isImbConfigured())return res.status(503).json({error:'IMB payment is temporarily unavailable. Please contact support.'});
-  const result=createWebOrder(String(req.body.name||''),'',Number(req.body.hours));
+  const cookie=/^(?:.*; )?fr_customer=([A-Za-z0-9_-]{32})(?:;.*)?$/.exec(req.headers.cookie||'');
+  const customerKey=cookie?.[1]||randomBytes(24).toString('base64url');
+  const result=createWebOrder(String(req.body.name||''),'',Number(req.body.hours),customerKey);
+  res.cookie('fr_customer',customerKey,{httpOnly:true,sameSite:'lax',secure:!mockPayment(),path:'/api/checkout',maxAge:365*24*60*60*1000});
   if(!mockPayment() && isImbConfigured()){
    try{
     const base=process.env.PUBLIC_CHECKOUT_URL||`${req.protocol}://${req.get('host')}/checkout`;
@@ -39,7 +43,7 @@ checkoutRouter.post('/orders',json({limit:'32kb'}),async(req,res)=>{
   }
   return res.status(201).json({orderId:result.order.id,accessToken:result.accessToken,amount:result.order.amount,status:result.order.status});
  }
- catch(error){return res.status(400).json({error:error instanceof Error?error.message:'Could not create order'});}
+ catch(error){const message=error instanceof Error?error.message:'Could not create order';return res.status(message.startsWith('Booking paused')?403:400).json({error:message});}
 });
 checkoutRouter.post('/orders/:id/proof',json({limit:'5mb'}),async(req,res)=>{
  try{if(mockPayment())return res.status(403).json({error:'Payment proof is disabled in the test preview; no payment is collected.'});if(limited(req))return res.status(429).json({error:'Too many attempts. Please wait and try again.'});const order=submitWebProof(req.params.id,String(req.body.accessToken||''),String(req.body.paymentReference||''),String(req.body.proofDataUrl||''));const [adminAlerted,pushAlerts]=await Promise.all([sendAdminClaim(order),sendApprovalPush(order)]);return res.json({status:order.status,adminAlerted,pushAlerts});}
@@ -59,6 +63,10 @@ async function confirmImbPayment(orderId:string){
  const newlyClaimed=claimGatewayPayment(orderId,result.utr?String(result.utr):null);
  const current=getOrder(orderId)!;
  if(!newlyClaimed&&current.status!=='payment_claimed')return {alreadyProcessed:true};
+ if(customerIsBlocked('web',current.customer_key||'')){
+  if(newlyClaimed)await Promise.all([sendAdminClaim(current),sendApprovalPush(current)]);
+  return {alreadyProcessed:false,delivered:false};
+ }
  for(const account of availableAccounts()){
   try{approveOrder(orderId,account.id);markDelivered(orderId);void notifyBookingRecorded(getOrder(orderId)!);return {alreadyProcessed:false,delivered:true};}
   catch(error){if(!(error instanceof Error)||!['Account is unavailable','Account is already in use','No IDs are available'].includes(error.message))throw error;}

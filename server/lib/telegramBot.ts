@@ -52,7 +52,7 @@ async function showAvailability(chatId:string,messageId?:number){
  }else await say(chatId,text,menu());
 }
 async function showPlans(chatId:string){
- if(customerHasFailedReset(chatId)){await say(chatId,'Your previous ID needs admin attention after a failed password reset. Contact the admin before booking again.',buttons([[supportButton()],[homeButton]]));return;}
+ if(customerHasFailedReset(chatId)){await say(chatId,'Your booking is paused after a failed password reset until the admin approves you. Please contact the admin.',buttons([[supportButton()],[homeButton]]));return;}
  if(!availableAccounts().length){await showAvailability(chatId);return;}
  await say(chatId,`Choose your duration. Time starts when the admin approves. ${sandboxMode?'This is a test; no payment is collected.':'Payment is verified manually before access is sent.'}`,buttons(Object.entries(PRICES).map(([h,p])=>[{text:`${duration(Number(h))} · ₹${p}`,callback_data:`hours:${h}`}]).concat([[supportButton() as any],[homeButton]])));
 }

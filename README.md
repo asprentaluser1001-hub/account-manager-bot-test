@@ -69,8 +69,12 @@ Validation: build `server` and `client` with `npm run build`, then run `node --t
 ## v5.3 changes
 
 - Customer mini app: live remaining-time countdown and progress bar while a booking is active; ended bookings show an ended state.
-- Failed password reset: keep the account quarantined, show the affected order a contact-admin message, notify the linked Telegram customer, and block that Telegram customer from new bot bookings until the reset is resolved. Manual reset failures also quarantine the ID. Anonymous web checkout cannot identify a returning person across fresh sessions; the failed ID remains unavailable there.
+- Failed password reset: keep the account quarantined, show the affected order a contact-admin message, notify the linked Telegram customer, and hold that Telegram customer until explicit admin approval, even after a successful reset. Manual reset failures also quarantine the ID. Anonymous web checkout cannot identify a returning person across fresh sessions; the failed ID remains unavailable there.
 - Admin booking views: show the assigned ID name and login email beside the customer, including active bookings and history.
 - Manual booking: add a 30-minute option (₹50 suggested; admin can edit the verified amount). Auto-reset starts 30 minutes after saving.
 - Admin: prevent touch pinch and trackpad pinch zoom while the dashboard is open.
 - Performance: stop repeat account/history requests every second after an expired timer; refresh on a 30-second cadence and index recent booking history.
+
+### Customer approval after a changed password
+
+When a password reset fails, the affected ID stays unavailable and a customer hold appears in Bookings → History. The admin recovers the external password and completes a successful reset, or retires the ID, then selects **Approve customer to book again**. Reset success alone does not remove the hold. Telegram bookings use the customer’s chat ID; checkout bookings use a persistent browser cookie. Anonymous checkout customers can clear browser data or use another device, so a truly person-wide block requires verified customer identity.
