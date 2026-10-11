@@ -555,7 +555,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
         <div className="max-w-3xl mx-auto px-4 sm:px-5 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <BrandMark />
-            <div><h1 className="font-heading text-lg font-bold text-slate-900">FlingRoulette</h1><p className="text-[10px] font-semibold tracking-[0.16em] uppercase text-slate-400">Admin</p></div>
+            <div><h1 className="font-heading text-lg font-bold text-slate-900">FlingRoulette</h1><p className="text-[10px] font-semibold tracking-[0.16em] uppercase text-slate-400">Admin · V{APP_VERSION}</p></div>
           </div>
           <div className="flex items-center gap-1">
             <button onClick={enablePush} disabled={pushState==='checking'} className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg transition-colors ${pushState==='on'?'bg-emerald-50 text-emerald-700':'text-slate-600 hover:text-slate-900 hover:bg-slate-100'}`}><span>{pushState==='on'?'●':'🔔'}</span><span>{pushState==='on'?'Alerts on':'Enable alerts'}</span></button>

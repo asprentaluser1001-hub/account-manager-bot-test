@@ -66,7 +66,7 @@ After deploying the updated client and server, restart the existing service. The
 
 Validation: build `server` and `client` with `npm run build`, then run `node --test tests/*.mjs` from `server`. The recovery suite uses only temporary databases, sample credentials and a mocked external browser; it never changes live customer passwords.
 
-## v5.3 changes
+## v5.9 changes
 
 - Customer mini app: live remaining-time countdown and progress bar while a booking is active; ended bookings show an ended state.
 - Failed password reset: keep the account quarantined, show the affected order a contact-admin message, notify the linked Telegram customer, and hold that Telegram customer until explicit admin approval, even after a successful reset. Manual reset failures also quarantine the ID. Anonymous web checkout cannot identify a returning person across fresh sessions; the failed ID remains unavailable there.
