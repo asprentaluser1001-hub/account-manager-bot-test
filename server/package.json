@@ -1,6 +1,6 @@
 {
   "name": "account-manager-server",
-  "version": "1.4.0",
+  "version": "5.3.0",
   "description": "Standalone VIP account manager with password reset (independent of FlingBoss)",
   "main": "dist/index.js",
   "scripts": {
