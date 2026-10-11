@@ -1,7 +1,7 @@
 import {useEffect,useMemo,useState} from 'react';
 
 type Plan={hours:number;amount:number};
-type Config={brand:string;support:string;plans:Plan[];available:boolean;gatewayEnabled:boolean;mockPayment:boolean};
+type Config={brand:string;support:string;supportUrl:string;plans:Plan[];available:boolean;gatewayEnabled:boolean;mockPayment:boolean};
 type SavedOrder={orderId:string;accessToken:string;amount:number;hours:number};
 type OrderStatus={id:string;username:string;hours:number;amount:number;status:string;created_at:string;claimed_at:string|null;approved_at:string|null;expires_at:string|null;error:string|null;payment_url?:string;phonepe_link?:string;paytm_link?:string;bhim_link?:string;credentials:null|{email:string;password:string}};
 
@@ -33,7 +33,7 @@ export default function Checkout(){
  const remaining=order?.expires_at?Math.max(0,new Date(order.expires_at).getTime()-now):0;
  const total=order?.approved_at&&order.expires_at?new Date(order.expires_at).getTime()-new Date(order.approved_at).getTime():0;
  const remainingText=`${Math.floor(remaining/3600000)}h ${String(Math.floor(remaining/60000)%60).padStart(2,'0')}m ${String(Math.floor(remaining/1000)%60).padStart(2,'0')}s`;
- const supportUrl=config.support?(config.support.startsWith('http')?config.support:`https://t.me/${config.support.replace(/^@/,'')}`):'';
+ const supportUrl=config.supportUrl;
  return <div className="checkout-shell">
   <header className="checkout-header"><a href="/checkout" className="checkout-brand"><span>FR</span>{config.brand}</a><div className="checkout-secure">Secure order</div></header>
   <main className="checkout-main">
@@ -60,7 +60,7 @@ export default function Checkout(){
    {approved&&order?.credentials&&<div className="checkout-card status-card approved"><div className="status-icon">✓</div><h2>Access approved</h2><p>Your time ends on <strong>{order.expires_at?new Date(order.expires_at).toLocaleString():'the scheduled time'}</strong>.</p>{total>0&&<div className="booking-time"><div className="booking-time-label"><span>Time remaining</span><strong>{remainingText}</strong></div><div className="booking-time-track" role="progressbar" aria-label="Booking time remaining" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(remaining/total*100)}><span style={{width:`${Math.min(100,remaining/total*100)}%`}} /></div></div>}<div className="credential"><span>Login</span><strong>{order.credentials.email}</strong><button onClick={()=>copy(order.credentials!.email,'email')}>{copied==='email'?'Copied':'Copy'}</button></div><div className="credential"><span>Password</span><strong>{order.credentials.password}</strong><button onClick={()=>copy(order.credentials!.password,'password')}>{copied==='password'?'Copied':'Copy'}</button></div><p className="checkout-note">Keep this page private. Save your credentials before closing it.</p></div>}
    {resetFailed&&<div className="checkout-card status-card"><div className="status-icon rejected">!</div><h2>Account reset needs attention</h2><p>This booking’s ID is blocked from new bookings because its password reset failed. Please contact the admin with order <strong>{saved?.orderId}</strong>. You can book again after the admin approves you.</p>{supportUrl&&<a className="checkout-primary block" href={supportUrl}>Contact admin</a>}</div>}
    {expired&&<div className="checkout-card status-card"><h2>Booking ended</h2><p>Your booking <strong>{saved?.orderId}</strong> has ended.</p><button className="checkout-link" onClick={startOver}>New booking</button></div>}
-   {rejected&&<div className="checkout-card status-card"><div className="status-icon rejected">×</div><h2>Payment could not be verified</h2><p>Please contact support with order <strong>{saved?.orderId}</strong>.</p>{config.support&&<a className="checkout-primary block" href={config.support.startsWith('http')?config.support:`https://t.me/${config.support.replace(/^@/,'')}`}>Contact support</a>}<button className="checkout-link" onClick={startOver}>Start a new order</button></div>}
+   {rejected&&<div className="checkout-card status-card"><div className="status-icon rejected">×</div><h2>Payment could not be verified</h2><p>Please contact support with order <strong>{saved?.orderId}</strong>.</p>{supportUrl&&<a className="checkout-primary block" href={supportUrl}>Contact support</a>}<button className="checkout-link" onClick={startOver}>Start a new order</button></div>}
   </main>
   <footer className="checkout-footer">© {new Date().getFullYear()} {config.brand} · {config.mockPayment?'Test preview · no real payments':'Payments through IMB'}</footer>
  </div>

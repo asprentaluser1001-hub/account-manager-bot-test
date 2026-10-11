@@ -78,3 +78,5 @@ Validation: build `server` and `client` with `npm run build`, then run `node --t
 ### Customer approval after a changed password
 
 When a password reset fails, the affected ID stays unavailable and a customer hold appears in Bookings → History. The admin recovers the external password and completes a successful reset, or retires the ID, then selects **Approve customer to book again**. Reset success alone does not remove the hold. Telegram bookings use the customer’s chat ID; checkout bookings use a persistent browser cookie. Anonymous checkout customers can clear browser data or use another device, so a truly person-wide block requires verified customer identity.
+
+Set **More → Bot settings → Your Telegram username** to make the Contact admin button in Telegram open your profile. Checkout uses its configured support URL, or this same Telegram username when no checkout support URL is set. Blocked customers see that link on the mini app as well.

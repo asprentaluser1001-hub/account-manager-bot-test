@@ -8,6 +8,7 @@ import { blockCustomerForAccount, markReset } from '../lib/testOrders';
 import {stopScheduledReset} from '../lib/autoResetScheduler';
 import {withResetStopped} from '../lib/resetJobs';
 import {recordAccountRecovery} from '../lib/v3Features';
+import {sendCustomerResetFailure} from '../lib/telegramBot';
 
 /**
  * Account routes. All protected by adminAuth.
@@ -158,7 +159,7 @@ accountsRouter.post('/:id/release', async (req: Request, res: Response) => {
     source: 'manual',
   });
 
-  if (!result.success) {markReset(id,false,result.error);return res.status(500).json({ error: result.error || 'Password reset failed. Account remains reserved.' });}
+  if (!result.success) {markReset(id,false,result.error);await sendCustomerResetFailure(id).catch(()=>false);return res.status(500).json({ error: result.error || 'Password reset failed. Account remains reserved.' });}
 
   // A completed manual release replaces the pending expiry reset.
   db.prepare('DELETE FROM auto_reset_schedule WHERE account_id = ?').run(id);
@@ -196,6 +197,7 @@ accountsRouter.post('/:id/recovery',async(req:Request,res:Response)=>{
    recordAccountRecovery(id,action,account.name);
    return {ok:true,message:action==='retire'?'Account permanently removed. Booking history kept.':action==='retry'?'Recovered password saved. Reset queued.':'Reset stopped. Account remains unavailable.'};
   })());
+  if(action==='stop')await sendCustomerResetFailure(id).catch(()=>false);
   return res.json(result);
  }catch(e){return res.status(409).json({error:e instanceof Error?e.message:'Recovery failed'});}
 });

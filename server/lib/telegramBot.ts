@@ -130,9 +130,13 @@ export async function sendCustomerDelivery(order:TestOrder,email:string,password
  try {const preview=process.env.V3_PREVIEW==='true';await say(order.chat_id,`${preview?'TEST ACCESS':'ACCESS'} · ${order.id}\nLogin: ${email}\nPassword: ${password}\nEnds: ${order.expires_at}${preview?'\nOnly sample credentials are used in this sandbox.':''}`,buttons([[homeButton]]));return true;}
  catch(e){console.error('[Bot] Customer delivery failed',e);return false;}
 }
-export async function sendCustomerStatus(order:TestOrder,status:string){
+export async function sendCustomerStatus(order:TestOrder,status:string,contactAdmin=false){
  if(!token||!/^\d{1,20}$/.test(order.chat_id))return false;
- try{await say(order.chat_id,`${sandboxMode?'TEST ':''}ORDER ${order.id}\nStatus: ${status}${sandboxMode?'\nNo real payment is collected in this preview.':''}`);return true;}catch(e){console.error('[Bot] Status notification failed',e);return false;}
+ try{const link=contactAdmin&&setting('support_username')?`\nContact admin: https://t.me/${setting('support_username')}`:'';await say(order.chat_id,`${sandboxMode?'TEST ':''}ORDER ${order.id}\nStatus: ${status}${link}${sandboxMode?'\nNo real payment is collected in this preview.':''}`,contactAdmin?buttons([[supportButton()],[homeButton]]):undefined);return true;}catch(e){console.error('[Bot] Status notification failed',e);return false;}
+}
+export async function sendCustomerResetFailure(accountId:string):Promise<boolean>{
+ const order=db.prepare("SELECT * FROM test_orders WHERE account_id=? AND status='reset_failed' AND chat_id GLOB '[0-9]*' ORDER BY approved_at DESC LIMIT 1").get(accountId) as TestOrder|undefined;
+ return order?sendCustomerStatus(order,'Password reset failed. Your next booking is paused until the admin approves you. Please contact the admin.',true):false;
 }
 export async function sendExpiryReminder(order:TestOrder){
  if(!token||order.source!=='telegram')return false;
