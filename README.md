@@ -70,6 +70,7 @@ Validation: build `server` and `client` with `npm run build`, then run `node --t
 
 - Customer mini app: live remaining-time countdown and progress bar while a booking is active; ended bookings show an ended state.
 - Failed password reset: keep the account quarantined, show the affected order a contact-admin message, notify the linked Telegram customer, and block that Telegram customer from new bot bookings until the reset is resolved. Manual reset failures also quarantine the ID. Anonymous web checkout cannot identify a returning person across fresh sessions; the failed ID remains unavailable there.
+- Admin booking views: show the assigned ID name and login email beside the customer, including active bookings and history.
 - Manual booking: add a 30-minute option (₹50 suggested; admin can edit the verified amount). Auto-reset starts 30 minutes after saving.
 - Admin: prevent touch pinch and trackpad pinch zoom while the dashboard is open.
 - Performance: stop repeat account/history requests every second after an expired timer; refresh on a 30-second cadence and index recent booking history.

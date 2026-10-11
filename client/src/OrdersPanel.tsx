@@ -9,6 +9,8 @@ type Order = {
   amount: number;
   status: string;
   account_id: string | null;
+  account_name?: string | null;
+  account_email?: string | null;
   created_at: string;
   claimed_at: string | null;
   approved_at: string | null;
@@ -702,6 +704,7 @@ export default function OrdersPanel({
                           · {order.id}
                         </span>
                       </p>
+                      {order.account_id && <p className="mt-1 text-sm font-medium text-slate-700">Assigned ID: {order.account_name || order.account_id}{order.account_email && <span className="font-normal text-slate-500"> · {order.account_email}</span>}</p>}
                       <p className="mt-1 text-sm text-slate-600">
                         {duration(order.hours)} · {money(order.amount)}
                       </p>

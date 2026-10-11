@@ -32,6 +32,10 @@ test('production-mode migration preserves an existing booking and manual extensi
   const booking=orders.createManualBooking('Test Customer','',1,100,'test-account','123456');
   assert.equal(booking.status,'approved');
   assert.equal(booking.chat_id,'123456');
+  const adminOrder=orders.recentOrders().find(row=>row.id===booking.id);
+  assert.equal(adminOrder.account_name,'Test Account');
+  assert.equal(adminOrder.account_email,'example@example.invalid');
+  assert.equal('password' in adminOrder,false);
   const oldExpiry=booking.expires_at;
   const extension=orders.createManualExtension('Test Customer','',50,'test-account');
   const newExpiry=orders.getOrder(booking.id).expires_at;
