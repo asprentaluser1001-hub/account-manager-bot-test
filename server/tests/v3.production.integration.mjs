@@ -78,6 +78,16 @@ test('production-mode migration preserves an existing booking and manual extensi
   db.prepare("UPDATE auto_reset_schedule SET status='done' WHERE account_id='half-hour-account'").run();
   orders.approveCustomerBlock(telegramHold.id);
   assert.equal(orders.customerHasFailedReset('123456'),false);
+  db.prepare("UPDATE auto_reset_schedule SET status='failed' WHERE account_id='half-hour-account'").run();
+  db.prepare("UPDATE accounts SET sold=1 WHERE id='half-hour-account'").run();
+  db.prepare("UPDATE test_orders SET status='reset_failed' WHERE id=?").run(short.id);
+  orders.blockCustomerForAccount('half-hour-account','Admin recovery failure');
+  const overrideHold=orders.listBookingBlocks().find(block=>block.order_id===short.id);
+  assert.throws(()=>orders.approveCustomerBlock(overrideHold.id),/Recover or retire/);
+  orders.approveCustomerBlock(overrideHold.id,true);
+  assert.equal(orders.customerHasFailedReset('123456'),false,'admin may unblock an innocent customer');
+  assert.equal(orders.availableAccounts().some(a=>a.id==='half-hour-account'),false,'override does not release the affected ID');
+  assert.equal(db.prepare('SELECT approval_override FROM booking_block_approvals WHERE block_id=? ORDER BY approved_at DESC LIMIT 1').get(overrideHold.id).approval_override,1);
 
   db.prepare('INSERT INTO accounts(id,name,email,password,sold,sold_until,created_at) VALUES (?,?,?,?,0,NULL,?)').run('web-account','Web Account','web@example.invalid','test-only',now);
   const web=orders.createWebOrder('Web Customer','',1,'browser-identity-for-test');
