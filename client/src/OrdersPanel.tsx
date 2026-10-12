@@ -176,12 +176,15 @@ export default function OrdersPanel({
     const interval = setInterval(load, 15000);
     return () => clearInterval(interval);
   }, [load]);
-  async function approveBlockedCustomer(block: BookingBlock) {
-    if (!window.confirm(`Allow ${block.customer_name} to book again? Confirm the affected ID has been recovered or retired first.`)) return;
+  async function approveBlockedCustomer(block: BookingBlock, override = false) {
+    if (!window.confirm(override
+      ? `Unblock ${block.customer_name} because the failure was not their fault? The affected ID will stay unavailable until you recover or retire it. They may book another available ID.`
+      : `Allow ${block.customer_name} to book again? Confirm the affected ID has been recovered or retired first.`)) return;
     setBusy(block.id); setError("");
     try {
       const response = await fetch(`/api/test-orders/blocks/${encodeURIComponent(block.id)}/approve`, {
-        method: "POST", headers: { Authorization: `Bearer ${token}` },
+        method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ override }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Could not approve customer");
@@ -640,7 +643,7 @@ export default function OrdersPanel({
       {view === "history" && (
         <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4">
           <h3 className="font-semibold text-amber-950">Customers awaiting your approval</h3>
-          <p className="mt-1 text-xs text-amber-900">A failed password reset pauses their next booking. Recover or retire the affected ID, then approve the customer here.</p>
+          <p className="mt-1 text-xs text-amber-900">A failed password reset pauses their next booking. Recover or retire the affected ID, or unblock a customer if the failure was not their fault. The affected ID stays unavailable.</p>
           {!data?.blocks?.length ? <p className="mt-3 text-sm text-amber-800">No customers are waiting.</p> :
             <div className="mt-3 space-y-3">{data.blocks.map(block => {
               const ready = !block.account_sold && !["pending", "running", "failed"].includes(block.reset_status || "");
@@ -648,7 +651,8 @@ export default function OrdersPanel({
                 <p className="font-semibold">{block.customer_name} <span className="font-normal text-slate-500">· {block.kind === "web" ? "Checkout browser" : "Telegram"}</span></p>
                 <p className="text-xs text-slate-600">Order {block.order_id} · ID {block.account_name || "retired"}</p>
                 <p className="mt-1 text-xs text-amber-800">{block.reason}</p>
-                <button type="button" className="admin-secondary mt-2" disabled={!ready || busy === block.id} onClick={() => approveBlockedCustomer(block)}>{ready ? busy === block.id ? "Approving…" : "Approve customer to book again" : "Recover or retire ID first"}</button>
+                {ready ? <button type="button" className="admin-secondary mt-2" disabled={busy === block.id} onClick={() => approveBlockedCustomer(block)}>{busy === block.id ? "Approving…" : "Approve customer to book again"}</button>
+                  : <button type="button" className="admin-secondary mt-2" disabled={busy === block.id} onClick={() => approveBlockedCustomer(block, true)}>{busy === block.id ? "Unblocking…" : "Unblock customer — ID stays unavailable"}</button>}
               </div>;
             })}</div>}
         </div>

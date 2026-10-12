@@ -68,7 +68,14 @@ db.exec(`CREATE TABLE IF NOT EXISTS booking_blocks (
  reason TEXT NOT NULL, blocked_at TEXT NOT NULL, approved_at TEXT,
  UNIQUE(kind,identity)
 );
-CREATE TABLE IF NOT EXISTS booking_block_migrations (version INTEGER PRIMARY KEY);`);
+CREATE TABLE IF NOT EXISTS booking_block_migrations (version INTEGER PRIMARY KEY);
+CREATE TABLE IF NOT EXISTS booking_block_approvals (
+ id TEXT PRIMARY KEY, block_id TEXT NOT NULL, order_id TEXT NOT NULL,
+ account_id TEXT NOT NULL, customer_name TEXT NOT NULL,
+ approval_override INTEGER NOT NULL, approved_at TEXT NOT NULL
+);`);
+if(!(db.prepare('PRAGMA table_info(booking_blocks)').all() as Array<{name:string}>).some(column=>column.name==='approval_override'))
+ db.exec('ALTER TABLE booking_blocks ADD COLUMN approval_override INTEGER NOT NULL DEFAULT 0');
 function holdCustomer(order:TestOrder,reason:string):void {
  const kind=/^\d{1,20}$/.test(order.chat_id)?'telegram':'web';
  const identity=kind==='web'?order.customer_key:order.chat_id;
@@ -95,13 +102,17 @@ export function blockCustomerForAccount(accountId:string,reason:string):void {
 }
 export type BookingBlock={id:string;kind:string;order_id:string;account_id:string;customer_name:string;reason:string;blocked_at:string;account_name:string|null;account_sold:number|null;reset_status:string|null};
 export function listBookingBlocks():BookingBlock[]{return db.prepare(`SELECT b.id,b.kind,b.order_id,b.account_id,b.customer_name,b.reason,b.blocked_at,a.name AS account_name,a.sold AS account_sold,s.status AS reset_status FROM booking_blocks b LEFT JOIN accounts a ON a.id=b.account_id LEFT JOIN auto_reset_schedule s ON s.account_id=b.account_id WHERE b.approved_at IS NULL ORDER BY b.blocked_at DESC LIMIT 200`).all() as BookingBlock[];}
-export function approveCustomerBlock(id:string):void {
- const block=db.prepare('SELECT account_id FROM booking_blocks WHERE id=? AND approved_at IS NULL').get(id) as {account_id:string}|undefined;
+export function approveCustomerBlock(id:string,override=false):void {
+ const block=db.prepare('SELECT account_id,order_id,customer_name FROM booking_blocks WHERE id=? AND approved_at IS NULL').get(id) as {account_id:string;order_id:string;customer_name:string}|undefined;
  if(!block)throw new Error('Customer hold is no longer active');
  const account=db.prepare('SELECT sold FROM accounts WHERE id=?').get(block.account_id) as {sold:number}|undefined;
  const reset=db.prepare('SELECT status FROM auto_reset_schedule WHERE account_id=?').get(block.account_id) as {status:string}|undefined;
- if(account?.sold||['pending','running','failed'].includes(reset?.status||''))throw new Error('Recover or retire the affected ID before approving this customer');
- db.prepare('UPDATE booking_blocks SET approved_at=? WHERE id=? AND approved_at IS NULL').run(new Date().toISOString(),id);
+ if(!override&&(account?.sold||['pending','running','failed'].includes(reset?.status||'')))throw new Error('Recover or retire the affected ID before approving this customer');
+ db.transaction(()=>{
+  const approvedAt=new Date().toISOString();
+  db.prepare('UPDATE booking_blocks SET approved_at=?,approval_override=? WHERE id=? AND approved_at IS NULL').run(approvedAt,override?1:0,id);
+  db.prepare('INSERT INTO booking_block_approvals VALUES (?,?,?,?,?,?,?)').run(randomUUID(),id,block.order_id,block.account_id,block.customer_name,override?1:0,approvedAt);
+ })();
 }
 export function createOrder(chatId:string,username:string,hours:number):TestOrder {
  if(customerHasFailedReset(chatId))throw new Error('Your booking is paused until the admin approves you. Please contact the admin.');

@@ -10,7 +10,7 @@ import {addExtraTime,auditLog,bookingEvents,endBooking,extendBooking,financeRepo
 export const testOrdersRouter=Router();testOrdersRouter.use(adminAuth);
 const fail=(res:Response,e:unknown)=>res.status(400).json({error:e instanceof Error?e.message:'Request failed'});
 testOrdersRouter.get('/',(_req,res)=>res.json({orders:recentOrders(),summary:summary(),finance:finance(),available:availableAccounts(),active:activeAccounts(),blocks:listBookingBlocks()}));
-testOrdersRouter.post('/blocks/:id/approve',(req,res)=>{try{approveCustomerBlock(req.params.id);res.json({ok:true,blocks:listBookingBlocks()})}catch(e){res.status(409).json({error:e instanceof Error?e.message:'Could not approve customer'})}});
+testOrdersRouter.post('/blocks/:id/approve',(req,res)=>{try{approveCustomerBlock(req.params.id,req.body?.override===true);res.json({ok:true,blocks:listBookingBlocks()})}catch(e){res.status(409).json({error:e instanceof Error?e.message:'Could not approve customer'})}});
 testOrdersRouter.get('/:id/proof',(req,res)=>{const order=getOrder(req.params.id);if(!order||order.history_hidden||!order.proof_data_url)return res.status(404).json({error:'Payment proof unavailable'});res.setHeader('Cache-Control','no-store');return res.json({proofDataUrl:order.proof_data_url});});
 testOrdersRouter.post('/history/hide',(req,res)=>{try{res.json({removed:hideOrderHistory(req.body?.ids)})}catch(e){fail(res,e)}});
 testOrdersRouter.get('/v3/finance',(_req,res)=>res.json(financeReport()));
