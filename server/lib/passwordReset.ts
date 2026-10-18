@@ -5,7 +5,7 @@ import * as fs from 'fs';
 import { db, AccountRow } from '../db';
 import { sandboxReset } from './testOrders';
 import {runResetJob,ResetResult} from './resetJobs';
-import {openResetLogin,findResetAccount} from './resetNavigation';
+import {openResetLogin,findResetAccount,ResetNavigationError} from './resetNavigation';
 
 /**
  * Password reset via headless Chromium (Playwright).
@@ -67,8 +67,8 @@ function removeTempDir(dir: string): void {
   try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* best effort */ }
 }
 
-export function resetAccountPassword(accountId:string):Promise<ResetResult>{
- return runResetJob(accountId,signal=>performReset(accountId,signal));
+export function resetAccountPassword(accountId:string, parentSignal?:AbortSignal):Promise<ResetResult>{
+ return runResetJob(accountId,signal=>performReset(accountId,signal),parentSignal);
 }
 async function performReset(accountId:string,signal:AbortSignal):Promise<ResetResult>{
   signal.throwIfAborted();
@@ -87,6 +87,7 @@ async function performReset(accountId:string,signal:AbortSignal):Promise<ResetRe
 
   let navigationStatus: number | undefined;
   let stage = 'launching browser';
+  let changeMayHaveBeenSubmitted = false;
   let activePage: import('playwright').Page | undefined;
   const stop=()=>{if(context)void context.close().catch(()=>{});};
   signal.addEventListener('abort',stop,{once:true});
@@ -150,6 +151,8 @@ async function performReset(accountId:string,signal:AbortSignal):Promise<ResetRe
     signal.throwIfAborted();
     db.prepare('UPDATE accounts SET reset_candidate_password=? WHERE id=?').run(newPassword,account.id);
     stage = 'submitting password change';
+    // Treat an interrupted submit as uncertain: the site may have changed the password.
+    changeMayHaveBeenSubmitted = true;
     // 7. Submit
     await page.click(SEL_PASSWORD_SUBMIT);
     await page.waitForTimeout(3000);
@@ -197,9 +200,15 @@ async function performReset(accountId:string,signal:AbortSignal):Promise<ResetRe
     try { const url = new URL(activePage?.url() || SITE_URL); location = url.origin + url.pathname; } catch {}
     let title = 'unavailable';
     try { title = (await activePage?.title() || title).slice(0, 120); } catch {}
-    const message = `${stage}: ${detail} (page: ${location}; HTTP: ${navigationStatus ?? 'unknown'}; title: ${JSON.stringify(title)})`;
+    const needsReview = changeMayHaveBeenSubmitted
+      || cause instanceof ResetNavigationError
+      || ['submitting current credentials', 'opening account after initial login', 'opening password change form'].includes(stage);
+    const guidance = changeMayHaveBeenSubmitted
+      ? ' Password may already have changed on Flingster; verify the candidate manually before retrying.'
+      : needsReview ? ' Check the current password and signed-in account screen manually before retrying.' : '';
+    const message = `${stage}: ${detail} (page: ${location}; HTTP: ${navigationStatus ?? 'unknown'}; title: ${JSON.stringify(title)})${guidance}`;
     console.error(`[PasswordReset] ✗ ${account.name} — ${message}`);
-    return { success: false, error: message };
+    return { success: false, error: message, retryable: !needsReview };
   } finally {
     signal.removeEventListener('abort',stop);
     if (context) await context.close().catch(()=>{});
