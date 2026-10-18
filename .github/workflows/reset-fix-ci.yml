@@ -1,0 +1,45 @@
+name: FlingRoulette v5.9 reset recovery validation
+
+on:
+  push:
+    branches:
+      - 'fix/v5.9-reset-recovery-safety'
+  pull_request:
+    branches:
+      - 'release/v5.9'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            client/package-lock.json
+            server/package-lock.json
+      - name: Install client dependencies
+        run: npm ci --ignore-scripts
+        working-directory: client
+      - name: Build client
+        run: npm run build
+        working-directory: client
+      - name: Install server dependencies (no browser download)
+        run: npm ci --ignore-scripts
+        working-directory: server
+      - name: Build server
+        run: npm run build
+        working-directory: server
+      - name: Run isolated regression tests
+        run: node --test tests/resetNavigation.unit.mjs tests/recovery.integration.mjs
+        working-directory: server
+        env:
+          TELEGRAM_BOT_TOKEN: ''
+          IMB_API_TOKEN: ''
