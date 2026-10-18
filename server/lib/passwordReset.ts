@@ -5,7 +5,7 @@ import * as fs from 'fs';
 import { db, AccountRow } from '../db';
 import { sandboxReset } from './testOrders';
 import {runResetJob,ResetResult} from './resetJobs';
-import {openResetLogin,findResetAccount,ResetNavigationError} from './resetNavigation';
+import {openResetLogin,openVerificationLogin,findResetAccount,ResetNavigationError} from './resetNavigation';
 
 /**
  * Password reset via headless Chromium (Playwright).
@@ -43,11 +43,6 @@ const TIMEZONES = ['Asia/Kolkata', 'America/New_York', 'Europe/London'];
 function randomItem<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
-function randomDelay(minMs: number, maxMs: number): Promise<void> {
-  const ms = Math.floor(Math.random() * (maxMs - minMs)) + minMs;
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 /** New password: 3 lowercase letters + 3 digits, e.g. "xqr847". */
 function generatePassword(): string {
   const letters = 'abcdefghijklmnopqrstuvwxyz';
@@ -92,7 +87,6 @@ async function performReset(accountId:string,signal:AbortSignal):Promise<ResetRe
   const stop=()=>{if(context)void context.close().catch(()=>{});};
   signal.addEventListener('abort',stop,{once:true});
   try {
-    await randomDelay(1000, 3000);
     signal.throwIfAborted();
 
     const browserOptions = {
@@ -130,7 +124,6 @@ async function performReset(accountId:string,signal:AbortSignal):Promise<ResetRe
     await page.fill(SEL_LOGIN_EMAIL, account.email);
     await page.fill(SEL_LOGIN_PASSWORD, account.password);
     await page.click(SEL_LOGIN_SUBMIT);
-    await page.waitForTimeout(3000);
 
     stage = 'opening account after initial login';
     const accountLink = await findResetAccount(page, signal);
@@ -174,12 +167,11 @@ async function performReset(accountId:string,signal:AbortSignal):Promise<ResetRe
     const verificationResponse = await verificationPage.goto(SITE_URL,{waitUntil:'domcontentloaded',timeout:20000});
     navigationStatus = verificationResponse?.status();
     stage = 'opening verification login form';
-    await openResetLogin(verificationPage, signal);
+    await openVerificationLogin(verificationPage, signal, SITE_URL);
     stage = 'submitting new credentials for verification';
     await verificationPage.fill(SEL_LOGIN_EMAIL,account.email);
     await verificationPage.fill(SEL_LOGIN_PASSWORD,newPassword);
     await verificationPage.click(SEL_LOGIN_SUBMIT);
-    await verificationPage.waitForTimeout(3000);
     stage = 'confirming verified account login';
     await findResetAccount(verificationPage, signal);
 
