@@ -177,15 +177,15 @@ accountsRouter.post('/:id/recovery',async(req:Request,res:Response)=>{
  const {id}=req.params,action=req.body?.action;
  const account=db.prepare('SELECT name FROM accounts WHERE id=?').get(id) as {name:string}|undefined;
  if(!account)return res.status(404).json({error:'Account not found'});
- if(!['stop','retry','retire'].includes(action))return res.status(400).json({error:'Choose stop, retry or retire'});
+ if(!['stop','save','retry','retire'].includes(action))return res.status(400).json({error:'Choose stop, save, retry or retire'});
  if(action==='retire'&&req.body?.confirmation!==account.name)return res.status(400).json({error:'Enter the account name to confirm permanent removal'});
  const password=req.body?.password;
- if(action==='retry'&&(typeof password!=='string'||!password.trim()||password.length>256))return res.status(400).json({error:'Enter the current password recovered from the external site'});
+ if((action==='retry'||action==='save')&&(typeof password!=='string'||!password.trim()||password.length>256))return res.status(400).json({error:'Enter the current password recovered from the external site'});
  try{
   stopScheduledReset(id);
   const result=await withResetStopped(id,()=>db.transaction(()=>{
    const now=new Date().toISOString();
-   if(action==='stop'||action==='retry')blockCustomerForAccount(id,'Account recovery requires admin approval');
+   if(action==='stop'||action==='retry'||action==='save')blockCustomerForAccount(id,'Account recovery requires admin approval');
    if(action==='retire'){
     db.prepare("UPDATE test_orders SET status='reservation_failed',error='Account retired; contact support for refund or reassignment' WHERE account_id=? AND status='reserved'").run(id);
     db.prepare("UPDATE booking_slots SET status='blocked' WHERE account_id=? AND status IN ('hold','reserved')").run(id);
@@ -193,13 +193,13 @@ accountsRouter.post('/:id/recovery',async(req:Request,res:Response)=>{
     db.prepare('DELETE FROM auto_reset_schedule WHERE account_id=?').run(id);
     db.prepare('DELETE FROM accounts WHERE id=?').run(id);
    }else{
-    if(action==='retry')db.prepare('UPDATE accounts SET password=? WHERE id=?').run(password,id);
+    if(action==='retry'||action==='save')db.prepare('UPDATE accounts SET password=?,reset_candidate_password=NULL WHERE id=?').run(password,id);
     db.prepare('UPDATE accounts SET sold=1,sold_until=? WHERE id=?').run(now,id);
     db.prepare("INSERT INTO auto_reset_schedule(account_id,run_at,status,created_at) VALUES (?,?,?,?) ON CONFLICT(account_id) DO UPDATE SET status=excluded.status,run_at=excluded.run_at,created_at=excluded.created_at").run(id,now,action==='retry'?'pending':'failed',now);
-    db.prepare("UPDATE test_orders SET status='reset_failed',expires_at=?,error=? WHERE account_id=? AND status IN ('approved','delivered','delivery_failed','reset_failed')").run(now,action==='retry'?'Recovery reset queued':'Reset stopped by admin; account quarantined',id);
+    db.prepare("UPDATE test_orders SET status='reset_failed',expires_at=?,error=? WHERE account_id=? AND status IN ('approved','delivered','delivery_failed','reset_failed')").run(now,action==='retry'?'Recovery reset queued':action==='save'?'Recovered password saved; reset paused by admin':'Reset stopped by admin; account quarantined',id);
    }
    recordAccountRecovery(id,action,account.name);
-   return {ok:true,message:action==='retire'?'Account permanently removed. Booking history kept.':action==='retry'?'Recovered password saved. Reset queued.':'Reset stopped. Account remains unavailable.'};
+   return {ok:true,message:action==='retire'?'Account permanently removed. Booking history kept.':action==='retry'?'Recovered password saved. Reset queued.':action==='save'?'Recovered password saved. No reset queued; account remains unavailable.':'Reset stopped. Account remains unavailable.'};
   })());
   if(action==='stop')await sendCustomerResetFailure(id).catch(()=>false);
   return res.json(result);

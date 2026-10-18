@@ -79,6 +79,7 @@ test('unverified external changes preserve both the old and attempted password',
  try{
   const result=await require('../dist/lib/passwordReset.js').resetAccountPassword('last');
   assert.equal(result.success,false);
+  assert.equal(result.retryable,false,'an unverified password change must not be retried automatically');
   assert.match(result.error,/confirming verified account login/);
   assert.match(result.error,/HTTP: 403/);
   assert.match(result.error,/Verification required/);
@@ -113,6 +114,22 @@ test('fresh verification reuses browser settings without sharing a login profile
  }finally{chromium.launchPersistentContext=original;}
 });
 
+test('scheduler cancellation aborts a running reset job',async()=>{
+ const {runResetJob}=require('../dist/lib/resetJobs.js');
+ const outer=new AbortController();
+ let started=false;
+ const job=runResetJob('cancel-from-scheduler',signal=>new Promise(resolve=>{
+  started=true;
+  signal.addEventListener('abort',()=>resolve({success:false,error:'Cancelled',retryable:false}),{once:true});
+ }),outer.signal);
+ await Promise.resolve();
+ assert.equal(started,true);
+ outer.abort(new Error('Stopped by recovery'));
+ const result=await job;
+ assert.equal(result.success,false);
+ assert.equal(result.retryable,false);
+});
+
 test('mini app welcome uses HTTPS and excludes credentials in URLs',()=>{
  bot.saveSetting('mini_app_url','https://example.invalid/checkout');
  assert.match(bot.miniAppPrompt().text,/Telegram mini app/);
@@ -143,6 +160,15 @@ test('admin HTTP recovery can quarantine, retry and retire without losing histor
   assert.equal(sql.prepare("SELECT status FROM auto_reset_schedule WHERE account_id='sample-1'").get().status,'failed');
   assert.equal(sql.prepare('SELECT status FROM test_orders WHERE id=?').get(booking.id).status,'reset_failed');
   assert.ok(!(await call('/api/test-orders','GET',undefined,token)).data.available.some(a=>a.id==='sample-1'));
+  sql.prepare("UPDATE accounts SET reset_candidate_password='unverified-candidate' WHERE id='sample-1'").run();
+  assert.equal((await call('/api/accounts/sample-1/recovery','POST',{action:'save',password:''},token)).status,400);
+  assert.equal((await call('/api/accounts/sample-1/recovery','POST',{action:'save',password:'confirmed-recovered-password'},token)).status,200);
+  const saved=sql.prepare("SELECT password,reset_candidate_password,sold FROM accounts WHERE id='sample-1'").get();
+  assert.equal(saved.password,'confirmed-recovered-password');
+  assert.equal(saved.reset_candidate_password,null);
+  assert.equal(saved.sold,1);
+  assert.equal(sql.prepare("SELECT status FROM auto_reset_schedule WHERE account_id='sample-1'").get().status,'failed');
+  assert.equal(sql.prepare('SELECT status FROM test_orders WHERE id=?').get(booking.id).status,'reset_failed');
   assert.equal((await call('/api/accounts/sample-1/recovery','POST',{action:'retry',password:''},token)).status,400);
   assert.equal((await call('/api/accounts/sample-1/recovery','POST',{action:'retry',password:'recovered-test-password'},token)).status,200);
   assert.equal(sql.prepare("SELECT status FROM auto_reset_schedule WHERE account_id='sample-1'").get().status,'pending');

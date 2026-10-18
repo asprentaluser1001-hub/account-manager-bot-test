@@ -2,6 +2,7 @@ import {activateReservations,extensionEligibility} from './v5Bookings';
 import {sendCustomerDelivery} from './telegramBot';
 import { db, AutoResetRow } from '../db';
 import { resetAccountPassword } from './passwordReset';
+import type { ResetResult } from './resetJobs';
 import { logResetHistory } from './history';
 import { markReset } from './testOrders';
 import { sendAdminBookingEnd, sendAdminResetResult, sendCustomerResetFailure, sendExpiryReminder } from './telegramBot';
@@ -32,14 +33,14 @@ function log(msg: string) {
   console.log(`[AutoReset] ${msg}`);
 }
 
-async function attemptBatch(accountId: string, signal:AbortSignal): Promise<{ success: boolean; newPassword?: string; error?: string }> {
-  let last: { success: boolean; newPassword?: string; error?: string } = { success: false, error: 'not run' };
+async function attemptBatch(accountId: string, signal:AbortSignal): Promise<ResetResult> {
+  let last: ResetResult = { success: false, error: 'not run' };
   for (let i = 1; i <= TRIES_PER_BATCH; i++) {
     signal.throwIfAborted();
     log(`account ${accountId}: try ${i}/${TRIES_PER_BATCH}`);
-    last = await resetAccountPassword(accountId);
+    last = await resetAccountPassword(accountId,signal);
     signal.throwIfAborted();
-    if (last.success) return last;
+    if (last.success || last.retryable === false) return last;
     if (i < TRIES_PER_BATCH) await sleep(GAP_BETWEEN_TRIES_MS,signal);
   }
   return last;
@@ -81,7 +82,7 @@ async function processSchedule(row: AutoResetRow): Promise<void> {
     log(`account ${accountId}: starting auto reset (batch 1)`);
     let result = await attemptBatch(accountId,signal);
 
-    if (!result.success) {
+    if (!result.success && result.retryable !== false) {
       log(`account ${accountId}: batch 1 failed, waiting 10 min before batch 2`);
       await sleep(WAIT_BETWEEN_BATCHES_MS,signal);
       log(`account ${accountId}: starting batch 2`);
@@ -89,6 +90,7 @@ async function processSchedule(row: AutoResetRow): Promise<void> {
     }
 
     signal.throwIfAborted();
+    if (!result.success && result.retryable === false) log(`account ${accountId}: manual review needed; retries stopped`);
     logResetHistory({
       accountId,
       accountName,
