@@ -8,7 +8,7 @@ An HTTP 200 page load does not prove login succeeded. A previously submitted pas
 
 1. On the website, manually verify the **current** password for the affected account. Never paste passwords, screenshots showing them, session cookies or API tokens into chat or issue trackers.
 2. From **Accounts → Lost password / stuck reset**, choose **Stop reset & quarantine ID** if reset attempts remain queued. This ends linked bookings and holds the account out of inventory.
-3. If the recovery field contains the verified current password, choose **Save recovered password (no reset)**. This updates only the stored credential, clears the unverified candidate and retains the quarantine. It does **not** queue a reset, release the ID or book anyone.
+3. If the recovery field contains the verified current password, choose **Save recovered password (no reset)**. This stores the verified password, clears the unverified candidate, stops retries and retains the quarantine; linked active bookings are ended. It does **not** queue a reset, release the ID or book anyone.
 4. Diagnose the website's signed-in navigation with an authorized test account. If the site requests CAPTCHA or identity verification, complete that manually rather than attempting to bypass it.
 5. Only after the automated flow has been repaired and tested should an admin decide whether to queue a new reset, release an ID or move a booking. Confirm the external password and account availability before reuse.
 
