@@ -1,12 +1,12 @@
-name: FlingRoulette v5.9 reset recovery validation
+name: FlingRoulette v5.9.2 verification validation
 
 on:
   push:
     branches:
-      - 'fix/v5.9-reset-recovery-safety'
+      - 'fix/v5.9.2-faster-verification'
   pull_request:
     branches:
-      - 'release/v5.9'
+      - 'release/v5.9.1'
   workflow_dispatch:
 
 permissions:
