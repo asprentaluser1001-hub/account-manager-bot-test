@@ -6,12 +6,20 @@ const {findResetAccount,openResetLogin,openVerificationLogin,ResetNavigationErro
 const invisible=()=>({all:async()=>[]});
 const visible=()=>({all:async()=>[{isVisible:async()=>true,click:async()=>{}}]});
 
-test('unknown login state is non-retryable and does not reveal page contents',async()=>{
+test('unknown login state is transient and does not reveal page contents',async()=>{
  const page={locator:()=>invisible(),getByRole:()=>invisible(),getByText:()=>invisible(),title:async()=>'',waitForTimeout:async()=>new Promise(r=>setTimeout(r,1))};
  await assert.rejects(()=>findResetAccount(page,new AbortController().signal,3),error=>{
   assert.ok(error instanceof ResetNavigationError);
+  assert.equal(error.kind,'transient');
   assert.match(error.message,/authentication unconfirmed/);
   return true;
+ });
+});
+
+test('specific credential rejection stops retries rather than treating a visible form as proof',async()=>{
+ const page={locator:()=>invisible(),getByRole:()=>invisible(),getByText:pattern=>pattern.test('Incorrect password')?visible():invisible(),title:async()=>''};
+ await assert.rejects(()=>findResetAccount(page,new AbortController().signal,3),error=>{
+  assert.equal(error.kind,'credentials');return true;
  });
 });
 
@@ -65,3 +73,4 @@ test('cancellation prevents verification retry',async()=>{
  const page={goto:async()=>{throw new Error('should not load')}};
  await assert.rejects(()=>openVerificationLogin(page,ctrl.signal,'https://example.invalid/',3,3));
 });
+
