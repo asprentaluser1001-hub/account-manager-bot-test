@@ -22,6 +22,10 @@ export function verifyMiniAppData(raw:string,botToken:string,now=Date.now()):Min
  const data=user as {id?:unknown;first_name?:unknown;last_name?:unknown};
  const id=String(data.id??'');
  if(!/^\d{1,16}$/.test(id)||!Number.isSafeInteger(Number(id)))throw new Error('Invalid Telegram user');
- const name=[data.first_name,data.last_name].filter(item=>typeof item==='string').join(' ').trim().slice(0,64)||'Telegram customer';
+ // Telegram permits one-character display names; checkout requires at least two.
+ // Normalize only the display label after signature verification. Identity is the ID.
+ const displayName=[data.first_name,data.last_name].filter(item=>typeof item==='string').join(' ').trim().slice(0,64);
+ const name=displayName.length>=2?displayName:'Telegram customer';
  return {id,name};
 }
+

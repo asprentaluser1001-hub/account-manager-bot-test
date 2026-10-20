@@ -8,13 +8,35 @@ import {createRequire} from 'node:module';
 
 const require=createRequire(import.meta.url);
 const token='123456:test-mini-app-token';
-function signed(id,authDate=Math.floor(Date.now()/1000),withSignature=false){
- const fields={auth_date:String(authDate),user:JSON.stringify({id,first_name:'Preview',last_name:'Customer'}),...(withSignature?{signature:'telegram-ed25519-signature'}:{})};
+function signed(id,authDate=Math.floor(Date.now()/1000),withSignature=false,profile={first_name:'Preview',last_name:'Customer'}){
+ const fields={auth_date:String(authDate),user:JSON.stringify({...profile,id}),...(withSignature?{signature:'telegram-ed25519-signature'}:{})};
  const check=Object.entries(fields).sort(([a],[b])=>a.localeCompare(b)).map(([key,value])=>`${key}=${value}`).join('\n');
  const secret=createHmac('sha256','WebAppData').update(token).digest();
  const hash=createHmac('sha256',secret).update(check).digest('hex');
  return new URLSearchParams({...fields,hash}).toString();
 }
+
+
+test('verified Telegram names satisfy booking validation without changing identity',()=>{
+ const {verifyMiniAppData}=require('../dist/lib/miniAppAuth.js');
+ const profiles=[
+  [{first_name:'.'},'Telegram customer'],
+  [{first_name:'A'},'Telegram customer'],
+  [{first_name:'李'},'Telegram customer'],
+  [{first_name:'   '},'Telegram customer'],
+  [{},'Telegram customer'],
+  [{first_name:'🙂'},'🙂'],
+  [{first_name:'A',last_name:'B'},'A B'],
+  [{first_name:'  Priya  '},'Priya'],
+  [{first_name:'X'.repeat(80)},'X'.repeat(64)],
+ ];
+ for(const [index,[profile,name]] of profiles.entries()){
+  const id=String(80000+index);
+  const raw=signed(id,Math.floor(Date.now()/1000),false,profile);
+  assert.deepEqual(verifyMiniAppData(raw,token),{id,name});
+  assert.throws(()=>verifyMiniAppData(raw.replace(id,'99999'),token),/Invalid/);
+ }
+});
 
 test('Mini App verifies Telegram identity and keeps customers separated',async()=>{
  const dir=mkdtempSync(join(tmpdir(),'flingroulette-v3-miniapp-'));
@@ -41,6 +63,25 @@ test('Mini App verifies Telegram identity and keeps customers separated',async()
   server=app.listen(0,'127.0.0.1');await new Promise(resolve=>server.once('listening',resolve));
   const base=`http://127.0.0.1:${server.address().port}`;
   const call=async(path,init,method='GET',body)=>{const r=await fetch(base+path,{method,headers:{'X-Telegram-Init-Data':init,'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});return {status:r.status,data:await r.json()}};
+  // Reproduce the customer report through both quick and advance booking APIs.
+  for(const [index,first_name] of ['.','A','李'].entries()){
+   const id=String(91000+index),init=signed(id,Math.floor(Date.now()/1000),false,{first_name});
+   const profile=await call('/api/miniapp/me',init);
+   assert.equal(profile.status,200);
+   assert.deepEqual(profile.data.user,{id,name:'Telegram customer'});
+   const quick=await call('/api/miniapp/book',init,'POST',{hours:1});
+   assert.equal(quick.status,201,JSON.stringify(quick.data));
+   const quickId=new URL(quick.data.checkoutUrl,'http://local').searchParams.get('order');
+   const stored=db.prepare('SELECT username,chat_id,customer_key FROM test_orders WHERE id=?').get(quickId);
+   assert.deepEqual({...stored},{username:'Telegram customer',chat_id:id,customer_key:id});
+   const accountId='short-name-'+index;
+   db.prepare('INSERT INTO accounts(id,name,email,password,created_at) VALUES (?,?,?,?,?)').run(accountId,'Sample short name',accountId+'@example.invalid','sample-password',new Date().toISOString());
+   const advance=await call('/api/miniapp/book',init,'POST',{hours:1,advance:true,accountId,startsAt:new Date(Date.now()+3600000).toISOString()});
+   assert.equal(advance.status,201,JSON.stringify(advance.data));
+   const advanceId=new URL(advance.data.checkoutUrl,'http://local').searchParams.get('order');
+   assert.deepEqual({...db.prepare('SELECT username,chat_id FROM test_orders WHERE id=?').get(advanceId)},{username:'Telegram customer',chat_id:id});
+   assert.equal((await call('/api/miniapp/me',init)).data.active,null);
+  }
   assert.equal((await call('/api/miniapp/me','')).status,401);
   assert.equal((await call('/api/miniapp/me',alice.replace('12345','67890'))).status,401);
   assert.equal((await call('/api/miniapp/me',alice)).data.supportUsername,null);
@@ -78,4 +119,5 @@ test('Mini App verifies Telegram identity and keeps customers separated',async()
   assert.equal(createWebOrder('Regular Customer','',1).order.chat_id,'web');
  }finally{if(server)await new Promise(resolve=>server.close(resolve));db.close();rmSync(dir,{recursive:true,force:true})}
 });
+
 
