@@ -1,12 +1,12 @@
-name: FlingRoulette v5.9.2 verification validation
+name: FlingRoulette v5.9.3 initial-login validation
 
 on:
   push:
     branches:
-      - 'fix/v5.9.2-faster-verification'
+      - 'fix/v5.9.3-login-retry'
   pull_request:
     branches:
-      - 'release/v5.9.1'
+      - 'release/v5.9.2'
   workflow_dispatch:
 
 permissions:

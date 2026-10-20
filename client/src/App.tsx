@@ -659,7 +659,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
                       {(autoOn || acc.sold) && (
                         <div className="flex items-center gap-2 flex-wrap mb-2">
                           {autoOn && (
-                            <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                            <span className={`inline-flex items-center gap-1 text-xs font-medium border px-2 py-0.5 rounded-full ${acc.autoResetStatus==='failed'?'text-amber-800 bg-amber-50 border-amber-200':'text-emerald-700 bg-emerald-50 border-emerald-200'}`}>
                               <Icon path={ICONS.shield} className="w-3 h-3" /> {acc.autoResetStatus==='running'?'Reset in progress':acc.autoResetStatus==='failed'?'Reset needs attention':'Auto-reset on'}
                             </span>
                           )}
@@ -737,10 +737,10 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
                             <span className="text-slate-400">Never reset</span>
                           )}
                         </span>
-                        {autoOn && (
+                        {autoOn && acc.autoResetStatus!=='failed' && (
                           <span className="inline-flex items-center gap-1.5 text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2 py-1">
                             <Icon path={ICONS.clock} className="w-3.5 h-3.5" />
-                            Next <span className="font-medium">{new Date(acc.autoResetAt as string).toLocaleString()}</span>
+                            {acc.autoResetStatus==='running'?'Scheduled':'Next'} <span className="font-medium">{new Date(acc.autoResetAt as string).toLocaleString()}</span>
                           </span>
                         )}
                         {acc.autoResetStatus==='failed'&&<button onClick={()=>retryNow(acc.id)} className="text-xs font-semibold text-red-700 bg-red-50 border border-red-200 rounded-full px-3 py-1">Retry reset now</button>}
@@ -783,7 +783,9 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
                           disabled={acc.sold && autoOn}
                           className={`inline-flex items-center justify-center gap-2 flex-1 px-3 py-2.5 text-sm font-semibold rounded-xl border transition active:scale-[0.98] whitespace-nowrap ${
                             autoOn
-                              ? 'text-emerald-700 bg-emerald-50 border-emerald-300 hover:bg-emerald-100'
+                              ? acc.autoResetStatus==='failed'
+                                ? 'text-red-700 bg-red-50 border-red-200 hover:bg-red-100'
+                                : 'text-emerald-700 bg-emerald-50 border-emerald-300 hover:bg-emerald-100'
                               : 'text-slate-700 bg-white border-slate-300 hover:bg-slate-50'
                           }`}
                         >

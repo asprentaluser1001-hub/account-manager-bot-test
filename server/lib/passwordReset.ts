@@ -5,7 +5,7 @@ import * as fs from 'fs';
 import { db, AccountRow } from '../db';
 import { sandboxReset } from './testOrders';
 import {runResetJob,ResetResult} from './resetJobs';
-import {openResetLogin,openVerificationLogin,findResetAccount,ResetNavigationError} from './resetNavigation';
+import {loginForPasswordReset,openVerificationLogin,findResetAccount,ResetNavigationError} from './resetNavigation';
 
 /**
  * Password reset via headless Chromium (Playwright).
@@ -114,19 +114,10 @@ async function performReset(accountId:string,signal:AbortSignal):Promise<ResetRe
     const initialResponse = await page.goto(SITE_URL, { waitUntil: 'domcontentloaded' });
     navigationStatus = initialResponse?.status();
 
-    // 2. Open login modal
-    stage = 'opening initial login form';
-    await openResetLogin(page, signal);
-
-    stage = 'submitting current credentials';
-    // 3. Login
-    await page.waitForSelector(SEL_LOGIN_EMAIL, { state: 'visible' });
-    await page.fill(SEL_LOGIN_EMAIL, account.email);
-    await page.fill(SEL_LOGIN_PASSWORD, account.password);
-    await page.click(SEL_LOGIN_SUBMIT);
-
+    // Confirm the initial login before changing passwords. Only an unconfirmed
+    // (still-visible) login form may trigger one bounded pre-change retry.
     stage = 'opening account after initial login';
-    const accountLink = await findResetAccount(page, signal);
+    const accountLink = await loginForPasswordReset(page, signal, SITE_URL, account.email, account.password);
     await accountLink.click();
 
     stage = 'opening password change form';
