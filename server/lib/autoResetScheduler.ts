@@ -73,7 +73,7 @@ async function processSchedule(row: AutoResetRow): Promise<void> {
     const ended=db.prepare("SELECT * FROM test_orders WHERE account_id=? AND status IN ('approved','delivered','delivery_failed') AND end_notified_at IS NULL AND expires_at<=? ORDER BY expires_at DESC LIMIT 1").get(accountId,new Date().toISOString()) as import('./testOrders').TestOrder|undefined;
     if(ended){
       db.prepare('UPDATE test_orders SET end_notified_at=? WHERE id=? AND end_notified_at IS NULL').run(new Date().toISOString(),ended.id);
-      await Promise.allSettled([sendAdminBookingEnd(ended),sendBookingEndPush(ended)]);
+      void Promise.allSettled([sendAdminBookingEnd(ended),sendBookingEndPush(ended)]);
     }
     log(`account ${accountId}: starting auto reset (batch 1)`);
     let result = await attemptBatch(accountId,signal);
@@ -98,8 +98,7 @@ async function processSchedule(row: AutoResetRow): Promise<void> {
     db.prepare(`UPDATE auto_reset_schedule SET status = ? WHERE account_id = ?`)
       .run(result.success ? 'done' : 'failed', accountId);
     markReset(accountId,result.success,result.error);
-    if(!result.success)await sendCustomerResetFailure(accountId);
-    await Promise.allSettled([sendAdminResetResult(accountName,result.success),sendResetResultPush(accountId,accountName,result.success,row.run_at)]);
+    void Promise.allSettled([...(result.success ? [] : [sendCustomerResetFailure(accountId)]),sendAdminResetResult(accountName,result.success),sendResetResultPush(accountId,accountName,result.success,row.run_at)]);
 
     log(`account ${accountId}: auto reset ${result.success ? 'SUCCESS' : 'GAVE UP'}`);
   } catch (err) {
@@ -113,8 +112,7 @@ async function processSchedule(row: AutoResetRow): Promise<void> {
     });
     db.prepare(`UPDATE auto_reset_schedule SET status = 'failed' WHERE account_id = ?`).run(accountId);
     markReset(accountId,false,err instanceof Error ? err.message : 'Unknown error');
-    await sendCustomerResetFailure(accountId);
-    await Promise.allSettled([sendAdminResetResult(accountName,false),sendResetResultPush(accountId,accountName,false,row.run_at)]);
+    void Promise.allSettled([sendCustomerResetFailure(accountId),sendAdminResetResult(accountName,false),sendResetResultPush(accountId,accountName,false,row.run_at)]);
   } finally {
     running.delete(accountId);
   }
@@ -127,7 +125,7 @@ function tick(): void {
   const reminders=db.prepare("SELECT * FROM test_orders WHERE source='telegram' AND status IN ('approved','delivered') AND order_type='booking' AND expires_at>? AND expires_at<=? AND reminder_notified_at IS NULL LIMIT 30").all(now,soon) as import('./testOrders').TestOrder[];
   for(const order of reminders)sendExpiryReminder(order).then(sent=>{if(sent)db.prepare('UPDATE test_orders SET reminder_notified_at=? WHERE id=? AND reminder_notified_at IS NULL').run(new Date().toISOString(),order.id)}).catch(e=>log(`reminder failed: ${e}`));
   const due = db
-    .prepare(`SELECT account_id, run_at, status, created_at FROM auto_reset_schedule WHERE status = 'pending' AND run_at <= ?`)
+    .prepare(`SELECT account_id, run_at, status, created_at FROM auto_reset_schedule WHERE status = 'pending' AND run_at <= ? ORDER BY run_at, account_id`)
     .all(now) as AutoResetRow[];
 
   for (const row of due) {
@@ -151,3 +149,4 @@ export function stopAutoResetScheduler(): void {
     interval = null;
   }
 }
+

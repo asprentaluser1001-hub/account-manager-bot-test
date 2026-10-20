@@ -48,7 +48,7 @@ async function sendPush(payload:{title:string;body:string;url:string;tag:string}
  await Promise.all(subscriptions.map(async row=>{
   const subscription:PushSubscription={endpoint:row.endpoint,keys:{p256dh:row.p256dh,auth:row.auth}};
   try{
-   await webPush.sendNotification(subscription,JSON.stringify(payload));sent+=1;
+   await webPush.sendNotification(subscription,JSON.stringify(payload),{timeout:10_000});sent+=1;
   }catch(error){
    const status=(error as {statusCode?:number}).statusCode;
    if(status===404||status===410)db.prepare('DELETE FROM push_subscriptions WHERE endpoint=?').run(row.endpoint);
@@ -70,3 +70,4 @@ export function sendBookingEndPush(order:TestOrder):Promise<number>{
 export function sendResetResultPush(accountId:string,accountName:string,success:boolean,runAt:string):Promise<number>{
  return sendPush({title:success?'Reset completed':'Reset failed',body:success?`${accountName}: password reset completed successfully. Account is available.`:`${accountName}: password reset failed. Account remains booked; check Accounts and History.`,url:'/?tab=accounts',tag:`reset-result-${accountId}-${runAt}`});
 }
+

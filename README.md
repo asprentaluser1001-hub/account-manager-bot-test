@@ -1,5 +1,36 @@
 # Account Manager + Telegram booking sandbox
 
+## Automatic password reset reliability
+
+Manual and scheduled resets now share one FIFO browser queue per server process.
+Several bookings expiring together no longer launch several Chromium instances
+at once. The 120-second attempt timeout starts when a job gets the browser slot,
+not while it waits in the queue. Run one server process per database.
+
+The reset worker waits for authenticated account controls and password form
+completion, then confirms the new password in a fresh browser profile. If the
+site changed the password but verification was interrupted, the next automatic
+attempt checks the saved candidate password first. It only replaces that
+candidate after successfully logging in with the stored password. Unverified
+credentials remain available for recovery; the ID stays unavailable on failure.
+
+The existing automatic policy remains three attempts, 30 seconds apart, then
+a 10-minute pause and three more attempts. Booking-end and result notifications
+do not block reset processing. History errors identify the failing step.
+
+To install the fix on an existing VPS, back up the database, deploy this branch
+through your normal process, run `npm ci` and `npm run build`
+in `server`, and restart the existing service. Keep the existing environment
+and database. The install script installs Chromium; its system dependencies
+must be available on the VPS.
+No database migration or client rebuild is required by this fix. Pending and
+interrupted running schedules resume on startup; previously failed schedules
+remain quarantined until **Retry reset now** is selected.
+
+Validation: from `server`, run `npm run build` followed by
+`node --test tests/*.mjs`. Reset regression tests use a mocked browser and
+temporary SQLite databases; they do not change external account passwords.
+
 **This repository is a test project.** It uses sample accounts and simulated payment claims; it does not collect money or reset external accounts. Follow [TESTING.md](TESTING.md) for the correct setup.
 
 ## Quick start on a computer or test VPS
@@ -80,3 +111,4 @@ Validation: build `server` and `client` with `npm run build`, then run `node --t
 When a password reset fails, the affected ID stays unavailable and a customer hold appears in Bookings → History. The admin recovers the external password and completes a successful reset, or retires the ID, then selects **Approve customer to book again**. Reset success alone does not remove the hold. Telegram bookings use the customer’s chat ID; checkout bookings use a persistent browser cookie. Anonymous checkout customers can clear browser data or use another device, so a truly person-wide block requires verified customer identity.
 
 Set **More → Bot settings → Your Telegram username** to make the Contact admin button in Telegram open your profile. Checkout uses its configured support URL, or this same Telegram username when no checkout support URL is set. Blocked customers see that link on the mini app as well.
+

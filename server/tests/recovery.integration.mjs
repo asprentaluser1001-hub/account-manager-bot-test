@@ -59,8 +59,10 @@ test('extra time preserves money and migration preserves time, extension links a
 test('reset jobs reject duplicates and cancellation finishes before recovery',async()=>{
  const {runResetJob,withResetStopped}=require('../dist/lib/resetJobs.js');
  let aborted=false;
- const job=runResetJob('lock-test',signal=>new Promise(resolve=>signal.addEventListener('abort',()=>{aborted=true;resolve({success:false,error:'Stopped'});},{once:true})));
- await Promise.resolve();
+ let started;
+ const ready=new Promise(resolve=>{started=resolve;});
+ const job=runResetJob('lock-test',signal=>new Promise(resolve=>{signal.addEventListener('abort',()=>{aborted=true;resolve({success:false,error:'Stopped'});},{once:true});started();}));
+ await ready;
  assert.equal((await runResetJob('lock-test',async()=>({success:true}))).success,false);
  await withResetStopped('lock-test',()=>assert.equal(aborted,true));
  assert.equal((await job).success,false);
@@ -73,7 +75,7 @@ test('unverified external changes preserve both the old and attempted password',
  let launches=0;
  chromium.launchPersistentContext=async()=>{
   const verifying=++launches===2;
-  const page={setDefaultTimeout(){},setDefaultNavigationTimeout(){},goto:async()=>{},click:async()=>{},fill:async()=>{},waitForTimeout:async()=>{},locator:()=>({isVisible:async()=>true,click:async()=>{}}),waitForSelector:async()=>{if(verifying)throw new Error('New credentials could not be verified');}};
+  const page={setDefaultTimeout(){},setDefaultNavigationTimeout(){},goto:async()=>{},click:async()=>{},fill:async()=>{},waitForFunction:async()=>{},locator:()=>({isVisible:async()=>true,click:async()=>{}}),waitForSelector:async()=>{if(verifying)throw new Error('New credentials could not be verified');}};
   return {pages:()=>[page],close:async()=>{}};
  };
  try{
@@ -130,3 +132,4 @@ test('admin HTTP recovery can quarantine, retry and retire without losing histor
   sql.close();
  }finally{child.kill('SIGTERM');await new Promise(r=>setTimeout(r,150));}
 });
+

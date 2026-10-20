@@ -1,197 +1,142 @@
-import { chromium } from 'playwright';
+import { chromium, BrowserContext, Page } from 'playwright';
+import { randomInt } from 'crypto';
 import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
 import { db, AccountRow } from '../db';
 import { sandboxReset } from './testOrders';
-import {runResetJob,ResetResult} from './resetJobs';
-
-/**
- * Password reset via headless Chromium (Playwright).
- * Logs into the external site with the account's current credentials, opens
- * the change-password modal, sets a new random password, and — on success —
- * saves the new password back to SQLite.
- *
- * Selectors mirror the working FlingBoss rotation flow.
- */
+import { runResetJob, ResetResult } from './resetJobs';
 
 const SITE_URL = 'https://flingster.com/';
+const LOGIN_OPEN = '.login-mdl.red-lnk';
+const LOGIN_EMAIL = '#user-email';
+const LOGIN_PASSWORD = '#user-pass';
+const LOGIN_SUBMIT = 'button.rlt-login';
+const MENU = '.fi-menu';
+const MY_ACCOUNT = '.mw-user.red-lnk';
+const CHANGE_OPEN = '.fi-pencil.chn-pass-mdl';
+const CURRENT_PASSWORD = '#curr-pass';
+const NEW_PASSWORD = '#chng-new-pass';
+const CONFIRM_PASSWORD = '#chng-new-pass-conf';
+const CHANGE_SUBMIT = 'button.rlt-change-pass';
 
-// Login flow
-const SEL_LOGIN_OPEN = '.login-mdl.red-lnk';
-const SEL_LOGIN_EMAIL = '#user-email';
-const SEL_LOGIN_PASSWORD = '#user-pass';
-const SEL_LOGIN_SUBMIT = 'button.rlt-login';
-
-// Navigation to My Account
-const SEL_MENU_ICON = '.fi-menu';
-const SEL_MY_ACCOUNT = '.mw-user.red-lnk';
-
-// Change password modal
-const SEL_CHANGE_PASSWORD_OPEN = '.fi-pencil.chn-pass-mdl';
-const SEL_CURRENT_PASSWORD = '#curr-pass';
-const SEL_NEW_PASSWORD = '#chng-new-pass';
-const SEL_CONFIRM_PASSWORD = '#chng-new-pass-conf';
-const SEL_PASSWORD_SUBMIT = 'button.rlt-change-pass';
-
-const USER_AGENTS = [
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
-];
-const LOCALES = ['en-US', 'en-GB', 'en-IN'];
-const TIMEZONES = ['Asia/Kolkata', 'America/New_York', 'Europe/London'];
-
-function randomItem<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
-function randomDelay(minMs: number, maxMs: number): Promise<void> {
-  const ms = Math.floor(Math.random() * (maxMs - minMs)) + minMs;
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/** New password: 3 lowercase letters + 3 digits, e.g. "xqr847". */
 function generatePassword(): string {
-  const letters = 'abcdefghijklmnopqrstuvwxyz';
-  const digits = '0123456789';
-  let pw = '';
-  for (let i = 0; i < 3; i++) pw += letters[Math.floor(Math.random() * letters.length)];
-  for (let i = 0; i < 3; i++) pw += digits[Math.floor(Math.random() * digits.length)];
-  return pw;
+  return Array.from({ length: 3 }, () => String.fromCharCode(97 + randomInt(26))).join('')
+    + Array.from({ length: 3 }, () => String(randomInt(10))).join('');
 }
 
-function createTempUserDataDir(): string {
-  const dir = path.join(os.tmpdir(), `pw-reset-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
-  fs.mkdirSync(dir, { recursive: true });
-  return dir;
-}
-function removeTempDir(dir: string): void {
-  try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* best effort */ }
+export function resetAccountPassword(accountId: string): Promise<ResetResult> {
+  return runResetJob(accountId, signal => performReset(accountId, signal));
 }
 
-export function resetAccountPassword(accountId:string):Promise<ResetResult>{
- return runResetJob(accountId,signal=>performReset(accountId,signal));
-}
-async function performReset(accountId:string,signal:AbortSignal):Promise<ResetResult>{
+async function performReset(accountId: string, signal: AbortSignal): Promise<ResetResult> {
   signal.throwIfAborted();
   if (process.env.SANDBOX_MODE === 'true') return sandboxReset(accountId);
-  const account = db
-    .prepare('SELECT id, name, email, password, last_reset_at, created_at FROM accounts WHERE id = ?')
-    .get(accountId) as AccountRow | undefined;
+  const account = db.prepare('SELECT * FROM accounts WHERE id = ?').get(accountId) as
+    (AccountRow & { reset_candidate_password: string | null }) | undefined;
+  if (!account) return { success: false, error: 'Account not found' };
 
-  if (!account) {
-    return { success: false, error: 'Account not found' };
+  let context: BrowserContext | null = null;
+  let stage = 'opening browser';
+  const dirs: string[] = [];
+  const stop = () => { if (context) void context.close().catch(() => {}); };
+  signal.addEventListener('abort', stop, { once: true });
+
+  async function closeBrowser(): Promise<void> {
+    if (context) await context.close();
+    context = null;
   }
 
-  const userDataDir = createTempUserDataDir();
-  const verificationDir = createTempUserDataDir();
-  let context: Awaited<ReturnType<typeof chromium.launchPersistentContext>> | null = null;
-
-  const stop=()=>{if(context)void context.close().catch(()=>{});};
-  signal.addEventListener('abort',stop,{once:true});
-  try {
-    await randomDelay(1000, 3000);
+  // Both change and verification logins use the same settings and a fresh profile.
+  async function login(password: string): Promise<Page> {
     signal.throwIfAborted();
-
-    context = await chromium.launchPersistentContext(userDataDir, {
-      headless: true,
-      timeout: 20_000,
+    await closeBrowser();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pw-reset-'));
+    dirs.push(dir);
+    context = await chromium.launchPersistentContext(dir, {
+      headless: true, timeout: 20_000,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
-      userAgent: randomItem(USER_AGENTS),
-      viewport: {
-        width: 1280 + Math.floor(Math.random() * 200) - 100,
-        height: 720 + Math.floor(Math.random() * 100) - 50,
-      },
-      locale: randomItem(LOCALES),
-      timezoneId: randomItem(TIMEZONES),
+      viewport: { width: 1280, height: 720 }, locale: 'en-US', timezoneId: 'Asia/Kolkata',
     });
-
     signal.throwIfAborted();
-    const page = context.pages()[0] || (await context.newPage());
-    page.setDefaultTimeout(15000);
-    page.setDefaultNavigationTimeout(20000);
-
-    // 1. Open site
+    const page = context.pages()[0] || await context.newPage();
+    page.setDefaultTimeout(25_000);
+    page.setDefaultNavigationTimeout(30_000);
     await page.goto(SITE_URL, { waitUntil: 'domcontentloaded' });
-
-    // 2. Open login modal
-    await page.waitForSelector(SEL_LOGIN_OPEN, { state: 'visible' });
-    await page.click(SEL_LOGIN_OPEN);
-
-    // 3. Login
-    await page.waitForSelector(SEL_LOGIN_EMAIL, { state: 'visible' });
-    await page.fill(SEL_LOGIN_EMAIL, account.email);
-    await page.fill(SEL_LOGIN_PASSWORD, account.password);
-    await page.click(SEL_LOGIN_SUBMIT);
-    await page.waitForTimeout(3000);
-
-    // 4. Open My Account (open hamburger menu first if needed)
-    const myAccountVisible = await page.locator(SEL_MY_ACCOUNT).isVisible().catch(() => false);
-    if (!myAccountVisible) {
-      await page.locator(SEL_MENU_ICON).click({ force: true });
-      await page.waitForTimeout(1000);
+    await page.waitForSelector(LOGIN_OPEN, { state: 'visible' });
+    await page.click(LOGIN_OPEN);
+    await page.waitForSelector(LOGIN_EMAIL, { state: 'visible' });
+    await page.fill(LOGIN_EMAIL, account!.email);
+    await page.fill(LOGIN_PASSWORD, password);
+    await page.click(LOGIN_SUBMIT);
+    // Wait for the actual authenticated UI, rather than assuming login took 3s.
+    await page.waitForSelector(LOGIN_EMAIL, { state: 'hidden' });
+    if (!await page.locator(MY_ACCOUNT).isVisible()) {
+      await page.locator(MENU).click();
     }
-    await page.waitForSelector(SEL_MY_ACCOUNT, { state: 'visible' });
-    await page.click(SEL_MY_ACCOUNT);
-    await page.waitForTimeout(2000);
+    await page.waitForSelector(MY_ACCOUNT, { state: 'visible' });
+    await page.click(MY_ACCOUNT);
+    await page.waitForSelector(CHANGE_OPEN, { state: 'visible' });
+    signal.throwIfAborted();
+    return page;
+  }
 
-    // 5. Open change-password modal
-    await page.waitForSelector(SEL_CHANGE_PASSWORD_OPEN, { state: 'visible' });
-    await page.click(SEL_CHANGE_PASSWORD_OPEN);
+  function saveVerified(password: string): ResetResult {
+    signal.throwIfAborted();
+    db.prepare('UPDATE accounts SET password=?,last_reset_at=?,reset_candidate_password=NULL WHERE id=?')
+      .run(password, new Date().toISOString(), account!.id);
+    return { success: true, newPassword: password };
+  }
 
-    // 6. Fill form
-    await page.waitForSelector(SEL_CURRENT_PASSWORD, { state: 'visible' });
+  try {
+    // A previous attempt may have changed the site password before verification
+    // timed out. Check that password first; never discard it on a network error.
+    if (account.reset_candidate_password) {
+      stage = 'checking previously attempted password';
+      try {
+        await login(account.reset_candidate_password);
+        return saveVerified(account.reset_candidate_password);
+      } catch {
+        signal.throwIfAborted();
+        // Only a successful old-password login lets us replace the candidate.
+      }
+    }
+
+    stage = 'logging in with stored password';
+    const page = await login(account.password);
+    stage = 'opening password form';
+    await page.click(CHANGE_OPEN);
+    await page.waitForSelector(CURRENT_PASSWORD, { state: 'visible' });
     const newPassword = generatePassword();
-    await page.fill(SEL_CURRENT_PASSWORD, account.password);
-    await page.fill(SEL_NEW_PASSWORD, newPassword);
-    await page.fill(SEL_CONFIRM_PASSWORD, newPassword);
-
+    await page.fill(CURRENT_PASSWORD, account.password);
+    await page.fill(NEW_PASSWORD, newPassword);
+    await page.fill(CONFIRM_PASSWORD, newPassword);
     signal.throwIfAborted();
-    db.prepare('UPDATE accounts SET reset_candidate_password=? WHERE id=?').run(newPassword,account.id);
-    // 7. Submit
-    await page.click(SEL_PASSWORD_SUBMIT);
-    await page.waitForTimeout(3000);
+    // Persist before submitting so a crash never loses the proposed credential.
+    db.prepare('UPDATE accounts SET reset_candidate_password=? WHERE id=?').run(newPassword, account.id);
+    stage = 'submitting password change';
+    await page.click(CHANGE_SUBMIT);
+    // Wait until the site finishes processing the form before closing Chromium.
+    await page.waitForFunction((selector: string) => {
+      const input = document.querySelector<HTMLInputElement>(selector);
+      return !input || input.value === '' || input.getClientRects().length === 0;
+    }, CURRENT_PASSWORD, { timeout: 25_000 });
 
-    // Verify the new credentials in an entirely fresh browser profile.
-    // Missing error text alone is not proof that the change succeeded.
-    await context.close();
-    context=null;
-    signal.throwIfAborted();
-    context=await chromium.launchPersistentContext(verificationDir,{
-      headless:true,timeout:20_000,args:['--no-sandbox','--disable-setuid-sandbox'],
-    });
-    signal.throwIfAborted();
-    const verificationPage=context.pages()[0]||await context.newPage();
-    verificationPage.setDefaultTimeout(15000);
-    await verificationPage.goto(SITE_URL,{waitUntil:'domcontentloaded',timeout:20000});
-    await verificationPage.click(SEL_LOGIN_OPEN);
-    await verificationPage.fill(SEL_LOGIN_EMAIL,account.email);
-    await verificationPage.fill(SEL_LOGIN_PASSWORD,newPassword);
-    await verificationPage.click(SEL_LOGIN_SUBMIT);
-    await verificationPage.waitForTimeout(3000);
-    if(!await verificationPage.locator(SEL_MY_ACCOUNT).isVisible().catch(()=>false)){
-      await verificationPage.locator(SEL_MENU_ICON).click({force:true});
-    }
-    await verificationPage.waitForSelector(SEL_MY_ACCOUNT,{state:'visible'});
-
-    signal.throwIfAborted();
-    // 9. Save new password to SQLite
-    db.prepare('UPDATE accounts SET password = ?, last_reset_at = ?, reset_candidate_password=NULL WHERE id = ?').run(
-      newPassword,
-      new Date().toISOString(),
-      account.id
-    );
-
-    console.log(`[PasswordReset] ✓ ${account.name}`);
-    return { success: true, newPassword };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error(`[PasswordReset] ✗ ${account.name} — ${message}`);
+    stage = 'verifying new password';
+    await login(newPassword);
+    return saveVerified(newPassword);
+  } catch (error) {
+    const reason = signal.aborted ? String(signal.reason?.message || 'Reset stopped')
+      : error instanceof Error ? error.message : 'Unknown error';
+    const message = stage + ': ' + reason;
+    console.error('[PasswordReset] failed for account ' + account.id + ' at ' + stage);
     return { success: false, error: message };
   } finally {
-    signal.removeEventListener('abort',stop);
-    if (context) await context.close().catch(()=>{});
-    removeTempDir(userDataDir);
-    removeTempDir(verificationDir);
+    signal.removeEventListener('abort', stop);
+    if (context) await (context as BrowserContext).close().catch(() => {});
+    for (const dir of dirs) {
+      try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* best effort */ }
+    }
   }
 }
+
