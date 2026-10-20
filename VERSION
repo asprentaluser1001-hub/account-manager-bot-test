@@ -1,4 +1,4 @@
-5.9.2
+5.9.3
 
-FlingRoulette v5.9.2 verification-timeout fix (release candidate; not deployed)
-Build: 2026.10.18.2
+FlingRoulette v5.9.3 bounded initial-login retry and clearer failed reset status (release candidate; not deployed)
+Build: 2026.10.20.1
