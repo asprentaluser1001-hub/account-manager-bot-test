@@ -8,7 +8,13 @@ function control(shown,onClick=()=>{}){
  return {isVisible:async()=>shown,click:async(options)=>{assert.notEqual(options?.force,true);assert.ok(shown,'hidden control must never be clicked');onClick();}};
 }
 function page(selectors,text=[]){
- return {locator:key=>({all:async()=>selectors[key]||[]}),getByText:()=>({all:async()=>text}),waitForSelector:async()=>{},waitForTimeout:async()=>{}};
+ let opened=false;
+ return {
+  locator:key=>({all:async()=>key==='#user-email'&&opened?[control(true)]:selectors[key]||[]}),
+  getByRole:()=>({all:async()=>[]}),title:async()=>'',
+  getByText:pattern=>({all:async()=>pattern.test('Login')?text:[]}),
+  waitForSelector:async()=>{opened=true;},waitForTimeout:async()=>{}
+ };
 }
 test('login selects visible duplicate rather than hidden first match',async()=>{
  let clicked=false;
@@ -32,12 +38,13 @@ test('mobile menu selects visible duplicate and waits for account',async()=>{
  assert.equal(await findResetAccount(page(selectors),signal()),account);
 });
 test('hidden menu produces an actionable error without a forced click',async()=>{
- await assert.rejects(findResetAccount(page({'.fi-menu':[control(false)]}),signal(),0),/My Account did not become visible/);
+ await assert.rejects(findResetAccount(page({'.fi-menu':[control(false)]}),signal(),0),/My Account not visible/);
 });
 test('missing login control reports page/layout failure',async()=>{
- await assert.rejects(openResetLogin(page({}),signal(),0),/No visible Flingster login control/);
+ await assert.rejects(openResetLogin(page({}),signal(),0),/No visible login control/);
 });
 test('aborted navigation stops before clicking',async()=>{
  const controller=new AbortController();controller.abort(new Error('Stopped by admin'));
  await assert.rejects(openResetLogin(page({}),controller.signal),/Stopped by admin/);
 });
+

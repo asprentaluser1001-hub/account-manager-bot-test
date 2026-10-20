@@ -59,27 +59,29 @@ test('extra time preserves money and migration preserves time, extension links a
 test('reset jobs reject duplicates and cancellation finishes before recovery',async()=>{
  const {runResetJob,withResetStopped}=require('../dist/lib/resetJobs.js');
  let aborted=false;
- const job=runResetJob('lock-test',signal=>new Promise(resolve=>signal.addEventListener('abort',()=>{aborted=true;resolve({success:false,error:'Stopped'});},{once:true})));
- await Promise.resolve();
+ let started;
+ const ready=new Promise(resolve=>{started=resolve;});
+ const job=runResetJob('lock-test',signal=>new Promise(resolve=>{signal.addEventListener('abort',()=>{aborted=true;resolve({success:false,error:'Stopped'});},{once:true});started();}));
+ await ready;
  assert.equal((await runResetJob('lock-test',async()=>({success:true}))).success,false);
  await withResetStopped('lock-test',()=>assert.equal(aborted,true));
  assert.equal((await job).success,false);
  assert.equal((await runResetJob('lock-test',async()=>({success:true}))).success,true);
 });
 
-test('unverified external changes preserve both the old and attempted password',async()=>{
+test('a verification security challenge preserves both passwords and requires review',async()=>{
  const {chromium}=require('playwright');
  const original=chromium.launchPersistentContext;
  let launches=0;
  chromium.launchPersistentContext=async()=>{
   const verifying=++launches===2;
-  const page={setDefaultTimeout(){},setDefaultNavigationTimeout(){},url:()=> 'https://flingster.com/?private=test-only',title:async()=> 'Verification required',goto:async()=>({status:()=>verifying?403:200}),click:async()=>{},fill:async()=>{},waitForTimeout:async()=>{},locator:(selector)=>({all:async()=>{if(verifying&&selector==='.mw-user.red-lnk')throw new Error('New credentials could not be verified');return [{isVisible:async()=>true,click:async()=>{}}];}}),waitForSelector:async()=>{if(verifying)throw new Error('New credentials could not be verified');}};
+  const page={setDefaultTimeout(){},setDefaultNavigationTimeout(){},url:()=> 'https://flingster.com/?private=test-only',title:async()=> 'Verification required',goto:async()=>({status:()=>verifying?403:200}),click:async()=>{},fill:async()=>{},waitForTimeout:async()=>{},waitForFunction:async()=>{},locator:(selector)=>({all:async()=>{if(verifying&&selector==='.mw-user.red-lnk')throw new Error('New credentials could not be verified');return [{isVisible:async()=>true,click:async()=>{}}];}}),waitForSelector:async()=>{if(verifying)throw new Error('New credentials could not be verified');}};
   return {pages:()=>[page],close:async()=>{}};
  };
  try{
   const result=await require('../dist/lib/passwordReset.js').resetAccountPassword('last');
   assert.equal(result.success,false);
-  assert.equal(result.retryable,false,'an unverified password change must not be retried automatically');
+  assert.equal(result.retryable,false,'a security challenge must not be retried automatically');
   assert.match(result.error,/confirming verified account login/);
   assert.match(result.error,/HTTP: 403/);
   assert.match(result.error,/Verification required/);
@@ -102,7 +104,7 @@ test('fresh verification reuses browser settings without sharing a login profile
     assert.deepEqual(options[key],launches[0].options[key],`verification changed ${key}`);
    }
   }
-  const page={setDefaultTimeout(){},setDefaultNavigationTimeout(){},goto:async()=>{},click:async()=>{},fill:async()=>{},waitForTimeout:async()=>{},waitForSelector:async()=>{},locator:()=>({all:async()=>[{isVisible:async()=>true,click:async()=>{}}]})};
+  const page={setDefaultTimeout(){},setDefaultNavigationTimeout(){},goto:async()=>{},click:async()=>{},fill:async()=>{},waitForTimeout:async()=>{},waitForFunction:async()=>{},waitForSelector:async()=>{},locator:()=>({all:async()=>[{isVisible:async()=>true,click:async()=>{}}]})};
   return {pages:()=>[page],close:async()=>{}};
  };
  try{
@@ -118,11 +120,14 @@ test('scheduler cancellation aborts a running reset job',async()=>{
  const {runResetJob}=require('../dist/lib/resetJobs.js');
  const outer=new AbortController();
  let started=false;
+ let onStart;
+ const ready=new Promise(resolve=>{onStart=resolve;});
  const job=runResetJob('cancel-from-scheduler',signal=>new Promise(resolve=>{
   started=true;
+  onStart();
   signal.addEventListener('abort',()=>resolve({success:false,error:'Cancelled',retryable:false}),{once:true});
  }),outer.signal);
- await Promise.resolve();
+ await ready;
  assert.equal(started,true);
  outer.abort(new Error('Stopped by recovery'));
  const result=await job;
@@ -188,3 +193,4 @@ test('admin HTTP recovery can quarantine, retry and retire without losing histor
   sql.close();
  }finally{child.kill('SIGTERM');await new Promise(r=>setTimeout(r,150));}
 });
+

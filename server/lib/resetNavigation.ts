@@ -1,7 +1,7 @@
 import { Page, Locator } from 'playwright';
 
 export class ResetNavigationError extends Error {
-  constructor(message: string) {
+  constructor(message: string, readonly kind: 'transient' | 'credentials' | 'challenge' = 'transient') {
     super(message);
     this.name = 'ResetNavigationError';
   }
@@ -33,7 +33,7 @@ export async function openResetLogin(page: Page, signal: AbortSignal, timeout = 
     signal.throwIfAborted();
     if (await visible(page.locator('#user-email'))) return;
     if (await challengeVisible(page)) {
-      throw new ResetNavigationError('Site verification challenge detected; manual review required');
+      throw new ResetNavigationError('Site verification challenge detected; manual review required', 'challenge');
     }
     const remaining = Math.max(1, deadline - Date.now());
     if (!clicked) {
@@ -61,7 +61,7 @@ export async function openResetLogin(page: Page, signal: AbortSignal, timeout = 
     }
   }
   signal.throwIfAborted();
-  if (await challengeVisible(page)) throw new ResetNavigationError('Site verification challenge detected; manual review required');
+  if (await challengeVisible(page)) throw new ResetNavigationError('Site verification challenge detected; manual review required', 'challenge');
   throw new ResetNavigationError(clicked
     ? 'Login form did not become visible after opening the login control'
     : 'No visible login control or login form; inspect website layout');
@@ -81,7 +81,7 @@ export async function openVerificationLogin(page: Page, signal: AbortSignal, sit
   console.log('[PasswordReset] Verification login form unavailable; reloading verification page once');
   const response = await page.goto(siteUrl, { waitUntil: 'domcontentloaded', timeout: 20_000 });
   if (response && response.status() >= 400) {
-    throw new ResetNavigationError('Verification page returned an error; manual review required');
+      throw new ResetNavigationError('Verification page returned an error', [401,403].includes(response.status()) ? 'challenge' : 'transient');
   }
   await openResetLogin(page, signal, reloadTimeout);
 }
@@ -98,6 +98,15 @@ export async function findResetAccount(page: Page, signal: AbortSignal, timeout 
       || await visible(page.getByText(/^my account$/i, { exact: true }));
     if (account) return account;
 
+    // A visible login form alone does not prove the password was rejected.
+    // Stop only on a specific rejection message or an actual security challenge.
+    if (await challengeVisible(page)) {
+      throw new ResetNavigationError('Site verification challenge detected; complete it manually', 'challenge');
+    }
+    if (await visible(page.getByText(/incorrect password|wrong password|invalid credentials|invalid email or password|incorrect email or password|email or password is incorrect/i))) {
+      throw new ResetNavigationError('Site explicitly rejected the login credentials', 'credentials');
+    }
+
     if (!openedMenu) {
       const menu = await visible(page.locator('.fi-menu'))
         || await visible(page.getByRole('button', { name: /^(open )?(menu|navigation)( menu)?$/i }))
@@ -112,10 +121,11 @@ export async function findResetAccount(page: Page, signal: AbortSignal, timeout 
   } while (Date.now() < deadline);
 
   if (await challengeVisible(page)) {
-    throw new ResetNavigationError('Site verification challenge detected; complete it manually');
+    throw new ResetNavigationError('Site verification challenge detected; complete it manually', 'challenge');
   }
   if (await visible(page.locator('#user-email'))) {
     throw new ResetNavigationError('Login form remains visible; saved credentials may be rejected or outdated');
   }
   throw new ResetNavigationError('My Account not visible after login; authentication unconfirmed or account/menu layout changed');
 }
+

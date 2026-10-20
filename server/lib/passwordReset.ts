@@ -69,8 +69,8 @@ async function performReset(accountId:string,signal:AbortSignal):Promise<ResetRe
   signal.throwIfAborted();
   if (process.env.SANDBOX_MODE === 'true') return sandboxReset(accountId);
   const account = db
-    .prepare('SELECT id, name, email, password, last_reset_at, created_at FROM accounts WHERE id = ?')
-    .get(accountId) as AccountRow | undefined;
+    .prepare('SELECT * FROM accounts WHERE id = ?')
+    .get(accountId) as (AccountRow & { reset_candidate_password: string | null }) | undefined;
 
   if (!account) {
     return { success: false, error: 'Account not found' };
@@ -101,6 +101,43 @@ async function performReset(accountId:string,signal:AbortSignal):Promise<ResetRe
       locale: randomItem(LOCALES),
       timezoneId: randomItem(TIMEZONES),
     };
+    // Verification can fail after the site has already changed the password.
+    // Confirm that persisted candidate before trying the old stored credential.
+    if (account.reset_candidate_password) {
+      stage = 'checking previously attempted password';
+      context = await chromium.launchPersistentContext(verificationDir, browserOptions);
+      signal.throwIfAborted();
+      const candidatePage = context.pages()[0] || await context.newPage();
+      activePage = candidatePage;
+      candidatePage.setDefaultTimeout(15000);
+      try {
+        const response = await candidatePage.goto(SITE_URL, { waitUntil: 'domcontentloaded', timeout: 20000 });
+        navigationStatus = response?.status();
+        if (navigationStatus === 403) throw new ResetNavigationError('Candidate verification access denied; manual review required', 'challenge');
+        await openVerificationLogin(candidatePage, signal, SITE_URL);
+        await candidatePage.fill(SEL_LOGIN_EMAIL, account.email);
+        await candidatePage.fill(SEL_LOGIN_PASSWORD, account.reset_candidate_password);
+        await candidatePage.click(SEL_LOGIN_SUBMIT);
+        const candidateLink = await findResetAccount(candidatePage, signal);
+        await candidateLink.click();
+        await candidatePage.waitForSelector(SEL_CHANGE_PASSWORD_OPEN, { state: 'visible' });
+        signal.throwIfAborted();
+        db.prepare('UPDATE accounts SET password=?,last_reset_at=?,reset_candidate_password=NULL WHERE id=?')
+          .run(account.reset_candidate_password, new Date().toISOString(), account.id);
+        console.log(`[PasswordReset] ✓ ${account.name} — recovered verified candidate`);
+        return { success: true, newPassword: account.reset_candidate_password };
+      } catch (error) {
+        signal.throwIfAborted();
+        if (error instanceof ResetNavigationError && error.kind === 'challenge') throw error;
+        // Preserve the candidate unless a stored-password login is confirmed.
+        // This also covers a candidate that the website never applied.
+      }
+      await context.close();
+      context = null;
+      removeTempDir(verificationDir);
+      fs.mkdirSync(verificationDir, { recursive: true });
+    }
+    stage = 'launching browser';
     context = await chromium.launchPersistentContext(userDataDir, browserOptions);
 
     signal.throwIfAborted();
@@ -148,7 +185,11 @@ async function performReset(accountId:string,signal:AbortSignal):Promise<ResetRe
     changeMayHaveBeenSubmitted = true;
     // 7. Submit
     await page.click(SEL_PASSWORD_SUBMIT);
-    await page.waitForTimeout(3000);
+    // Do not close Chromium while the password form is still processing.
+    await page.waitForFunction((selector: string) => {
+      const field = document.querySelector<HTMLInputElement>(selector);
+      return !field || field.value === '' || field.getClientRects().length === 0;
+    }, SEL_CURRENT_PASSWORD, { timeout: 25000 });
 
     // Verify the new credentials in an entirely fresh browser profile.
     // Missing error text alone is not proof that the change succeeded.
@@ -173,7 +214,9 @@ async function performReset(accountId:string,signal:AbortSignal):Promise<ResetRe
     await verificationPage.fill(SEL_LOGIN_PASSWORD,newPassword);
     await verificationPage.click(SEL_LOGIN_SUBMIT);
     stage = 'confirming verified account login';
-    await findResetAccount(verificationPage, signal);
+    const verifiedAccount = await findResetAccount(verificationPage, signal);
+    await verifiedAccount.click();
+    await verificationPage.waitForSelector(SEL_CHANGE_PASSWORD_OPEN, { state: 'visible' });
 
     signal.throwIfAborted();
     // 9. Save new password to SQLite
@@ -192,15 +235,19 @@ async function performReset(accountId:string,signal:AbortSignal):Promise<ResetRe
     try { const url = new URL(activePage?.url() || SITE_URL); location = url.origin + url.pathname; } catch {}
     let title = 'unavailable';
     try { title = (await activePage?.title() || title).slice(0, 120); } catch {}
-    const needsReview = changeMayHaveBeenSubmitted
-      || cause instanceof ResetNavigationError
-      || ['submitting current credentials', 'opening account after initial login', 'opening password change form'].includes(stage);
+    const challenge = (cause instanceof ResetNavigationError && cause.kind === 'challenge')
+      || navigationStatus === 403 || /captcha|verification required|security check|access denied/i.test(title);
+    const rejected = cause instanceof ResetNavigationError && cause.kind === 'credentials';
+    // An unconfirmed login is transient. A submitted change remains recoverable
+    // because the next attempt checks its candidate before another change.
+    const retryable = !signal.aborted && !challenge && (!rejected || changeMayHaveBeenSubmitted);
     const guidance = changeMayHaveBeenSubmitted
-      ? ' Password may already have changed on Flingster; verify the candidate manually before retrying.'
-      : needsReview ? ' Check the current password and signed-in account screen manually before retrying.' : '';
+      ? retryable ? ' Candidate password preserved; the next automatic attempt will verify it first.'
+        : ' Candidate password preserved; resolve the login or security challenge manually before retrying.'
+      : !retryable ? ' Check the current password and signed-in account screen manually before retrying.' : ' Automatic retries remain enabled.';
     const message = `${stage}: ${detail} (page: ${location}; HTTP: ${navigationStatus ?? 'unknown'}; title: ${JSON.stringify(title)})${guidance}`;
     console.error(`[PasswordReset] ✗ ${account.name} — ${message}`);
-    return { success: false, error: message, retryable: !needsReview };
+    return { success: false, error: message, retryable };
   } finally {
     signal.removeEventListener('abort',stop);
     if (context) await context.close().catch(()=>{});
@@ -208,3 +255,4 @@ async function performReset(accountId:string,signal:AbortSignal):Promise<ResetRe
     removeTempDir(verificationDir);
   }
 }
+
