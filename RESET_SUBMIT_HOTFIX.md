@@ -43,3 +43,27 @@ To roll back manually, stop the service, move the current `server/dist` aside,
 copy the saved `dist` directory back to `server/dist`, and start the service.
 The source checkout remains on the hotfix commit; rebuilding it reapplies the
 hotfix.
+
+## Check remaining VPS access failures
+
+If the logs show HTTP 403 or `cf-mitigated: challenge`, compare the installed
+Chromium's native defaults with one deterministic sample of the application's
+current browser settings:
+
+```bash
+cd /root/flingroulette-v4-prod && git fetch origin fix/v5.9.2-same-attempt-verification && git merge --ff-only FETCH_HEAD && cd server && node scripts/check-site-access.cjs
+```
+
+This opens only the public landing page, once per configuration and sequentially.
+It reads no database or account credentials and makes no login/password-change
+submissions. It does not restart or rebuild the server. It stops inspecting a
+page when a challenge is detected; it does not solve or bypass that challenge.
+The application preset is a fixed sample, not a reconstruction of the random
+settings from an earlier reset.
+
+If native defaults alone reach the login controls, investigate browser
+configuration before changing production behavior. Landing-page access is not
+proof that a login or reset will work. If both configurations remain challenged,
+access from the VPS is still unverified; use Flingster's official contact page
+at https://flingster.com/contact/ to ask about supported automated access.
+No official password-management API was established during this investigation.

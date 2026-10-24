@@ -43,7 +43,7 @@ jobs:
         run: npm rebuild better-sqlite3
         working-directory: server
       - name: Run isolated regression tests
-        run: node --test tests/resetNavigation.unit.mjs tests/reset-navigation.unit.mjs tests/reset-regression.integration.mjs tests/recovery.integration.mjs tests/v5.integration.mjs
+        run: node --test tests/site-access.unit.cjs tests/resetNavigation.unit.mjs tests/reset-navigation.unit.mjs tests/reset-regression.integration.mjs tests/recovery.integration.mjs tests/v5.integration.mjs
         working-directory: server
         env:
           TELEGRAM_BOT_TOKEN: ''
