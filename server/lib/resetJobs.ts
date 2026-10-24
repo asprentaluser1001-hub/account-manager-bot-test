@@ -1,4 +1,8 @@
-export type ResetResult = { success: boolean; newPassword?: string; error?: string; retryable?: boolean };
+export type ResetErrorCode = 'site_blocked' | 'credentials_rejected' | 'timeout' | 'transient' | 'busy' | 'cancelled' | 'account_missing';
+export type ResetResult = { success: boolean; newPassword?: string; error?: string; retryable?: boolean; errorCode?: ResetErrorCode };
+export class ResetJobTimeoutError extends Error {
+  constructor() { super('Password reset timed out; the next attempt will check the attempted password'); this.name = 'ResetJobTimeoutError'; }
+}
 const jobs = new Map<string, { controller: AbortController; done: Promise<ResetResult> }>();
 const recovering = new Set<string>();
 // All accounts share a FIFO browser slot. Waiting does not consume the job timeout.
@@ -10,14 +14,14 @@ export async function runResetJob(
   externalSignal?: AbortSignal
 ): Promise<ResetResult> {
   if (jobs.has(accountId) || recovering.has(accountId)) {
-    return { success: false, error: 'A reset or recovery is already in progress for this account', retryable: false };
+    return { success: false, error: 'A reset or recovery is already in progress for this account', retryable: false, errorCode: 'busy' };
   }
-  if (externalSignal?.aborted) return { success: false, error: 'Scheduled reset cancelled', retryable: false };
+  if (externalSignal?.aborted) return { success: false, error: 'Scheduled reset cancelled', retryable: false, errorCode: 'cancelled' };
   const controller = new AbortController();
   const cancel = () => controller.abort(externalSignal?.reason || new Error('Scheduled reset cancelled'));
   externalSignal?.addEventListener('abort', cancel, { once: true });
   const previous = queue;
-  const done = (async () => {
+  const done = (async ():Promise<ResetResult> => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     let stopWaiting: (() => void) | undefined;
     try {
@@ -26,10 +30,12 @@ export async function runResetJob(
         controller.signal.addEventListener('abort', stopWaiting, { once: true });
       })]);
       controller.signal.throwIfAborted();
-      timer = setTimeout(() => controller.abort(new Error('Password reset timed out; automatic retry will check the attempted password')), 120_000);
+      timer = setTimeout(() => controller.abort(new ResetJobTimeoutError()), 120_000);
       return await work(controller.signal);
     } catch (error) {
-      return { success: false, error: error instanceof Error ? error.message : 'Password reset failed', retryable: !controller.signal.aborted };
+      const timeout = controller.signal.aborted && controller.signal.reason instanceof ResetJobTimeoutError;
+      return { success: false, error: error instanceof Error ? error.message : 'Password reset failed', retryable: timeout || !controller.signal.aborted,
+        errorCode: timeout ? 'timeout' : controller.signal.aborted ? 'cancelled' : 'transient' };
     } finally {
       clearTimeout(timer);
       if (stopWaiting) controller.signal.removeEventListener('abort', stopWaiting);
@@ -54,5 +60,11 @@ export async function withResetStopped<T>(accountId: string, work: () => T): Pro
     }
     return work();
   } finally { recovering.delete(accountId); }
+}
+
+export async function shutdownResetJobs():Promise<void> {
+  const active=[...jobs.values()];
+  for(const job of active)job.controller.abort(new Error('Server stopping'));
+  await Promise.allSettled(active.map(job=>job.done));
 }
 

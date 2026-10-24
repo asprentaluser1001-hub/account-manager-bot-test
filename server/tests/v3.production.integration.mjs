@@ -87,7 +87,7 @@ test('production-mode migration preserves an existing booking and manual extensi
   orders.approveCustomerBlock(overrideHold.id,true);
   assert.equal(orders.customerHasFailedReset('123456'),false,'admin may unblock an innocent customer');
   assert.equal(orders.availableAccounts().some(a=>a.id==='half-hour-account'),false,'override does not release the affected ID');
-  assert.equal(db.prepare('SELECT approval_override FROM booking_block_approvals WHERE block_id=? ORDER BY approved_at DESC LIMIT 1').get(overrideHold.id).approval_override,1);
+  assert.equal(db.prepare('SELECT approval_override FROM booking_block_approvals WHERE block_id=? ORDER BY approved_at DESC,rowid DESC LIMIT 1').get(overrideHold.id).approval_override,1);
 
   db.prepare('INSERT INTO accounts(id,name,email,password,sold,sold_until,created_at) VALUES (?,?,?,?,0,NULL,?)').run('web-account','Web Account','web@example.invalid','test-only',now);
   const web=orders.createWebOrder('Web Customer','',1,'browser-identity-for-test');
