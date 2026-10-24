@@ -39,6 +39,7 @@ chromium.launchPersistentContext=async(profile,options)=>{
  return context;
 };
 const {AdminBrowser}=requireApp('./dist/lib/adminBrowser.js');
+const {runResetJob}=requireApp('./dist/lib/resetJobs.js');
 (async()=>{
  const manager=new AdminBrowser(),{id}=manager.start('fixture');
  try{
@@ -54,13 +55,28 @@ const {AdminBrowser}=requireApp('./dist/lib/adminBrowser.js');
   }
   assert.equal(status.state,'ready',JSON.stringify(status));
   assert.equal(status.httpStatus,200);
+  assert.ok(status.expiresAt-Date.now()>3*60*60_000-5000);
   const frame=await manager.frame('fixture',id);
   assert.ok(frame.length>1000);
   const box=await remotePage.locator('#field').boundingBox();
   await manager.action('fixture',id,{type:'click',x:box.x+box.width/2,y:box.y+box.height/2});
   await manager.action('fixture',id,{type:'text',text:'manual-fixture-text'});
   assert.equal(await remotePage.locator('#field').inputValue(),'manual-fixture-text');
+  // Run a separate real headless browser in the reset slot while the headed
+  // viewer stays open. Neither browser visits an external website.
+  const reset=await runResetJob('beside-long-lived-viewer',async()=>{
+   const engine=await chromium.launch({...(process.env.BROWSER_TEST_EXECUTABLE?{executablePath:process.env.BROWSER_TEST_EXECUTABLE}:{}),headless:true,args:['--no-sandbox']});
+   try{
+    const page=await engine.newPage();
+    await page.setContent('<title>Independent reset browser fixture</title><h1>Reset still runs</h1>');
+    assert.equal(await page.title(),'Independent reset browser fixture');
+    return {success:true};
+   }finally{await engine.close();}
+  });
+  assert.equal(reset.success,true);
+  assert.equal(manager.status('fixture',id).state,'ready');
   console.log('Actual Xvfb + headed Chromium fixture passed. Frame bytes:',frame.length);
+  console.log('A separate headless browser completed in the reset queue while the viewer stayed ready.');
  }finally{
   await manager.stop('fixture',id);
   if(openedProfile)assert.equal(require('node:fs').existsSync(openedProfile),false);

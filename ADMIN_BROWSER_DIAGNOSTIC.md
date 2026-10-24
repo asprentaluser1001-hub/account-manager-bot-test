@@ -1,13 +1,14 @@
-# Temporary phone-accessible VPS browser
+# Phone-accessible Flingster VPS browser
 
 The dashboard at https://flingroulette.duckdns.org serves the browser viewer at
-`/admin-browser`. This is a manual diagnostic, not proof that automated password
-changes work and not a mechanism to share challenge clearance with reset jobs.
+`/admin-browser`. It supports manual Flingster use for up to three hours in a
+separate browser and temporary profile. It does not share login sessions or
+challenge clearance with password-reset workers.
 
 ## Setup
 
 ```bash
-cd /root/flingroulette-v4-prod && git fetch origin diagnostics/phone-vps-browser && git merge --ff-only FETCH_HEAD && bash deploy/setup-admin-browser.sh
+cd /root/flingroulette-v4-prod && git fetch origin feature/three-hour-flingster-browser && git merge --ff-only FETCH_HEAD && bash deploy/setup-admin-browser.sh
 ```
 
 Setup installs Xvfb, keyboard utilities, D-Bus and desktop settings schemas if
@@ -25,12 +26,27 @@ VPS browser**. Tap the image to click, and use the text box to type into the
 selected remote field. Text is hidden in the local input and cleared after
 sending. The viewer does not retrieve credentials from the account database.
 
-The live browser is visible for up to two minutes, including startup time, and
-holds the existing global browser queue while active. Scheduled resets wait;
-they are not cancelled. Stop it when finished. If a reset is already running,
-the viewer waits its turn. A queued request expires after five minutes.
-Headed Chromium has up to 60 seconds to start, within that existing two-minute
-limit. The reset worker's browser timeout and verification policy are unchanged.
+Each session lasts up to three hours **after the page is ready**. Opening has a
+separate 90-second deadline, including Chromium's existing 60-second launch
+limit and page navigation. The server enforces expiry even if Safari closes or
+the phone sleeps. Close the browser when finished; refreshing the same viewer
+tab reconnects to its existing session without resetting its expiry.
+
+The viewer no longer enters `runResetJob` or owns the reset FIFO. It can open
+while a reset is running, and reset jobs can finish while it is open. The
+password-reset worker still processes its own jobs one at a time with the
+existing two-minute execution deadline. There is at most one manual viewer
+session, and it has its own profile, cookies, desktop bus, display and cleanup.
+Both browsers still share the VPS's CPU and memory. A scheduled reset for an
+account used in the viewer can change that account's password or end its login;
+the viewer does not reserve accounts or suspend their schedules.
+
+This is a screenshot viewer with taps and text input, **not a video/audio
+stream**. It does not forward the phone's camera or microphone, or play remote
+audio. Screenshot polling pauses while the viewer page is hidden to avoid
+unnecessary capture work; the server-side session continues until closed or
+expired. Returning to the page resumes updates.
+
 Each screenshot allows up to 15 seconds on slower hosts. A capture timeout or
 first-frame rendering error is retried once without navigation or user input.
 
@@ -77,7 +93,7 @@ The previous fixture stopped observing after 15 seconds, which could report
 actual result. Such output does not prove Chromium crashed or that its D-Bus
 warnings caused the viewer failure.
 
-## Disable after inspection
+## Disable the viewer
 
 ```bash
 cd /root/flingroulette-v4-prod && bash deploy/disable-admin-browser.sh
@@ -87,3 +103,17 @@ This removes only the diagnostic drop-in and restarts the existing service. On s
 leaves Xvfb installed but does not keep a display process running. Active browser
 profiles are temporary and contain no shared reset-worker state. The private
 desktop bus is also stopped and its socket removed when the viewer closes.
+
+## Verification
+
+The viewer integration tests advance a mocked clock past the old two-minute
+limit and up to the three-hour deadline, including cleanup. They also check
+that opening works while a reset owns its FIFO and that a reset completes while
+the viewer is open. Startup has an independent bounded deadline.
+
+The local headed-browser fixture exercises Xvfb, private D-Bus, real Chromium,
+screenshot capture and human input, then runs a separate real headless browser
+through the reset queue before closing the viewer. The mobile UI fixture
+checks the three-hour countdown and reconnect after refresh. All fixtures use
+local pages and never log in to a real Flingster account. The clock test does
+not replace a real three-hour session or establish production resource usage.

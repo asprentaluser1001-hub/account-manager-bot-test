@@ -5,11 +5,11 @@ import { randomBytes, timingSafeEqual } from 'crypto';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { runResetJob } from './resetJobs';
 
 const WIDTH = 1280, HEIGHT = 720;
 const SITE = 'https://flingster.com/';
-const MAX_WAIT_MS = 5 * 60_000;
+const SESSION_MS = 3 * 60 * 60_000;
+const OPENING_TIMEOUT_MS = 90_000;
 const ALLOWED_KEYS = new Set(['Enter', 'Tab', 'Backspace', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
 
 export class AdminBrowserError extends Error {
@@ -130,7 +130,7 @@ async function launchManualBrowser(signal: AbortSignal): Promise<BrowserHandle> 
 }
 
 interface Session {
-  id: string; owner: string; state: 'queued' | 'opening' | 'ready' | 'closed';
+  id: string; owner: string; state: 'opening' | 'ready' | 'closed';
   controller: AbortController; done: Promise<unknown>; page?: Page;
   expiresAt?: number; httpStatus?: number; note?: string; operations: Promise<unknown>;
 }
@@ -153,14 +153,18 @@ export class AdminBrowser {
 
   start(owner: string) {
     if (this.current && this.current.state !== 'closed') throw new AdminBrowserError('A browser session is already open. Close it or wait for it to expire.');
-    const session: Session = { id: randomBytes(32).toString('hex'), owner, state: 'queued', controller: new AbortController(), done: Promise.resolve(), operations: Promise.resolve() };
+    const session: Session = { id: randomBytes(32).toString('hex'), owner, state: 'opening', controller: new AbortController(), done: Promise.resolve(), operations: Promise.resolve() };
     this.current = session;
-    const deadline = setTimeout(() => session.controller.abort(), MAX_WAIT_MS);
+    const signal = session.controller.signal;
+    // This is a separate manual browser, not a password-reset job. A long
+    // viewer session must never hold the reset worker's single browser slot.
+    let deadline = setTimeout(() => {
+      session.note = 'VPS browser startup exceeded 90 seconds. Close it and try again.';
+      session.controller.abort(new Error('Browser startup timed out'));
+    }, OPENING_TIMEOUT_MS);
     deadline.unref();
-    session.done = runResetJob('__manual_browser_diagnostic__', async signal => {
+    session.done = (async () => {
       let handle: BrowserHandle | undefined;
-      session.state = 'opening';
-      session.expiresAt = Date.now() + 120_000;
       try {
         handle = await this.launch(signal);
         signal.throwIfAborted();
@@ -178,23 +182,30 @@ export class AdminBrowser {
           return route.continue();
         });
         context.on('page', popup => { if (popup !== page) void popup.close().catch(() => {}); });
+        context.on('close', () => session.controller.abort(new Error('Browser closed')));
         page.on('dialog', dialog => { void dialog.dismiss().catch(() => {}); });
         try {
           const response = await page.goto(SITE, { waitUntil: 'domcontentloaded', timeout: 20_000 });
           session.httpStatus = response?.status();
         } catch { session.note = 'Page navigation did not finish. The current screen is shown below.'; }
         signal.throwIfAborted();
+        clearTimeout(deadline);
+        session.expiresAt = Date.now() + SESSION_MS;
+        deadline = setTimeout(() => {
+          session.note = 'The three-hour session has finished.';
+          session.controller.abort(new Error('Browser session expired'));
+        }, SESSION_MS);
+        deadline.unref();
         session.state = 'ready';
         await new Promise<void>(resolve => {
           if (signal.aborted) resolve();
           else signal.addEventListener('abort', () => resolve(), { once: true });
         });
-        return { success: true };
       } catch (error) {
         if (!signal.aborted) session.note = error instanceof AdminBrowserError ? error.message : 'Could not open the VPS browser. Check the viewer setup and installed Chromium.';
         throw error;
       } finally { if (handle) await handle.close(); }
-    }, session.controller.signal).catch(() => {}).finally(() => {
+    })().catch(() => {}).finally(() => {
       clearTimeout(deadline);
       session.state = 'closed';
       session.page = undefined;

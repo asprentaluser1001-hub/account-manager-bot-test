@@ -7,7 +7,8 @@ body{font-family:system-ui,sans-serif;margin:0;background:#f1f5f9;color:#0f172a}
 </style></head><body><main>
 <a href="/?tab=approvals">← Dashboard</a><h1>VPS browser</h1>
 <p>This shows a browser running on your VPS. You control it manually from this page.</p>
-<div class="card"><p>The session lasts up to two minutes and temporarily holds the password-reset queue. Close it when finished. It opens only Flingster and does not read or update your saved dashboard passwords.</p>
+<div class="card"><p>Use Flingster for up to three hours per session. Automatic and manual password resets keep running. Close the browser when finished.</p>
+<p class="muted">This viewer supports screenshots, taps and typing. It does not stream video, microphone or sound. A scheduled reset can still change the password of an account you are using here.</p>
 <p class="muted">If you change a password manually, verify it and save it through account recovery afterward. Completing a challenge here does not confirm that automatic resets will work.</p>
 <div class="actions"><button id="start">Open VPS browser</button><button id="stop" disabled>Close browser</button></div><p id="status" role="status">Ready. Sign in to the dashboard first if needed.</p></div>
 <img id="frame" hidden alt="Live screenshot from the VPS browser. Tap to click." width="1280" height="720">
@@ -18,7 +19,8 @@ body{font-family:system-ui,sans-serif;margin:0;background:#f1f5f9;color:#0f172a}
 </section>
 <script nonce="%NONCE%">
 const status=document.getElementById('status'),image=document.getElementById('frame'),controls=document.getElementById('controls'),start=document.getElementById('start'),stop=document.getElementById('stop');
-let id=sessionStorage.getItem('fr_manual_browser')||'',timer,blobUrl='';
+let id=sessionStorage.getItem('fr_manual_browser')||'',timer,blobUrl='',polling=false;
+function timeLeft(expiresAt){const s=Math.max(0,Math.ceil((expiresAt-Date.now())/1000));return Math.floor(s/3600)+'h '+String(Math.floor(s/60)%60).padStart(2,'0')+'m '+String(s%60).padStart(2,'0')+'s';}
 async function api(path,method='GET',body){
  const token=localStorage.getItem('am_token');
  if(!token)throw Error('Please sign in at the Dashboard link above, then return here.');
@@ -31,19 +33,21 @@ async function api(path,method='GET',body){
 function clearSession(){id='';sessionStorage.removeItem('fr_manual_browser');image.hidden=true;image.removeAttribute('src');controls.hidden=true;start.disabled=false;stop.disabled=true;clearTimeout(timer);if(blobUrl){URL.revokeObjectURL(blobUrl);blobUrl='';}}
 async function poll(){
  clearTimeout(timer);
- if(!id)return;
+ if(!id||document.hidden||polling)return;
+ polling=true;
  const session=id;
  try{
   const s=await(await api('/status')).json();
   if(session!==id)return;
-  status.textContent=s.state==='queued'?'Waiting for the current password-reset job to finish…':s.state==='opening'?'Opening the VPS browser…':s.state==='closed'?'Browser closed. '+(s.note||'You can open another session.'):'Live VPS browser · Initial HTTP '+(s.httpStatus||'unknown')+' · '+Math.max(0,Math.ceil((s.expiresAt-Date.now())/1000))+' seconds remaining'+(s.note?'\n'+s.note:'');
+  status.textContent=s.state==='opening'?'Opening the VPS browser…':s.state==='closed'?'Browser closed. '+(s.note||'You can open another session.'):'Live VPS browser · '+timeLeft(s.expiresAt)+' remaining'+(s.note?'\n'+s.note:'');
   if(s.state==='closed'){clearSession();return;}
-  if(s.state==='ready'){
+  if(s.state==='ready'&&!document.hidden){
    const response=await api('/frame');const blob=await response.blob();if(session!==id)return;const next=URL.createObjectURL(blob);const old=blobUrl;blobUrl=next;image.onload=()=>{if(old)URL.revokeObjectURL(old);};image.src=next;image.hidden=false;controls.hidden=false;
   }
   timer=setTimeout(poll,1000);
- }catch(error){if(session!==id)return;status.textContent=error.message;if(error.httpStatus===401||error.httpStatus===404){clearSession();}else{timer=setTimeout(poll,2000);}}
+ }catch(error){if(session!==id)return;status.textContent=error.message;if(error.httpStatus===401||error.httpStatus===404){clearSession();}else{timer=setTimeout(poll,2000);}}finally{polling=false;if(id&&session!==id&&!document.hidden){clearTimeout(timer);timer=setTimeout(poll,0);}}
 }
+document.addEventListener('visibilitychange',()=>{clearTimeout(timer);if(!document.hidden&&id)poll();});
 start.addEventListener('click',async()=>{start.disabled=true;status.textContent='Requesting browser…';try{const data=await(await api('/start','POST')).json();id=data.id;sessionStorage.setItem('fr_manual_browser',id);stop.disabled=false;await poll();}catch(error){status.textContent=error.message;start.disabled=false;}});
 stop.addEventListener('click',async()=>{stop.disabled=true;clearTimeout(timer);try{await api('/stop','POST');status.textContent='Browser closed.';clearSession();}catch(error){status.textContent=error.message;stop.disabled=false;}});
 async function action(body){try{await api('/action','POST',body);}catch(error){status.textContent=error.message;}}

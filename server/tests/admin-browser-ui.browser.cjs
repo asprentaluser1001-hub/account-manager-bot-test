@@ -14,8 +14,8 @@ const {createAdminBrowserRouter,serveAdminBrowserPage}=requireApp('./dist/routes
   const framePage=await browser.newPage({viewport:{width:1280,height:720}});
   await framePage.setContent('<h1>Local fixture: VPS browser</h1><input placeholder="Email"><button>Login</button>');
   const jpeg=await framePage.screenshot({type:'jpeg'});await framePage.close();
-  const calls=[],sid='a'.repeat(64);let stopped=false;
-  const fake={start:()=>({id:sid}),status:()=>({state:stopped?'closed':'ready',expiresAt:Date.now()+120000,httpStatus:403}),frame:async()=>jpeg,action:async(owner,id,body)=>calls.push(body),stop:async()=>{stopped=true;}};
+  const calls=[],sid='a'.repeat(64);let stopped=false,starts=0,frames=0;
+  const fake={start:()=>{starts++;return {id:sid};},status:()=>({state:stopped?'closed':'ready',expiresAt:Date.now()+3*60*60_000,httpStatus:403}),frame:async()=>{frames++;return jpeg;},action:async(owner,id,body)=>calls.push(body),stop:async()=>{stopped=true;}};
   const app=express();app.use(express.json());app.get('/admin-browser',serveAdminBrowserPage);app.use('/api/admin-browser',(req,_res,next)=>{if(req.method==='POST')assert.equal(req.get('Origin'),'https://dashboard.example');next();},createAdminBrowserRouter(fake));
   server=await new Promise(resolve=>{const s=app.listen(0,'127.0.0.1',()=>resolve(s));});
   const base='http://127.0.0.1:'+server.address().port;
@@ -31,6 +31,18 @@ const {createAdminBrowserRouter,serveAdminBrowserPage}=requireApp('./dist/routes
   assert.equal(await page.locator('#frame').isVisible(),false);
   await page.locator('#start').click();
   try{await page.locator('#controls').waitFor({state:'visible',timeout:8000});}catch(e){console.log('STATUS',await page.locator('#status').textContent());throw e;}
+  assert.match(await page.locator('#status').textContent(),/3h 00m 00s remaining/);
+  await page.reload();
+  await page.locator('#controls').waitFor({state:'visible',timeout:8000});
+  assert.equal(starts,1,'refresh opened another server-side browser session');
+  await page.evaluate(()=>{Object.defineProperty(document,'hidden',{value:true,configurable:true});document.dispatchEvent(new Event('visibilitychange'));});
+  const hiddenFrames=frames;
+  await page.waitForTimeout(1300);
+  assert.equal(frames,hiddenFrames,'hidden viewer kept requesting screenshots');
+  await page.evaluate(()=>{Object.defineProperty(document,'hidden',{value:false,configurable:true});document.dispatchEvent(new Event('visibilitychange'));});
+  const resumedDeadline=Date.now()+3000;
+  while(frames===hiddenFrames&&Date.now()<resumedDeadline)await new Promise(resolve=>setTimeout(resolve,25));
+  assert.ok(frames>hiddenFrames,'visible viewer did not resume screenshots');
   await page.locator('#frame').click({position:{x:100,y:100}});
   await page.locator('#text').fill('test-human-input');
   await page.locator('#typing button').click();
@@ -43,6 +55,6 @@ const {createAdminBrowserRouter,serveAdminBrowserPage}=requireApp('./dist/routes
   assert.ok(calls.some(a=>a.type==='click'&&a.x>=0&&a.x<1280&&a.y>=0&&a.y<720));
   assert.ok(calls.some(a=>a.type==='text'&&a.text==='test-human-input'));
   assert.ok(calls.some(a=>a.type==='key'&&a.key==='Enter'));
-  console.log('Mobile browser UI fixture passed: auth, start, image, click, hidden text input, key, stop.');
+  console.log('Mobile browser UI fixture passed: auth, three-hour countdown, refresh reconnect, background polling pause/resume, click, hidden text input, key, stop.');
  }finally{if(server)await new Promise(resolve=>server.close(resolve));await browser.close();}
 })().catch(e=>{console.error(e.message);process.exitCode=1;});
