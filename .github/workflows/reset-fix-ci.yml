@@ -7,6 +7,7 @@ on:
       - 'fix/v5.9.2-same-attempt-verification'
       - 'diagnostics/phone-vps-browser'
       - 'fix/reset-worker-reliability'
+      - 'feature/three-hour-flingster-browser'
   pull_request:
     branches:
       - 'release/v5.9.1'

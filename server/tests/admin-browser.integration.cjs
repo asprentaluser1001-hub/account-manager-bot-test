@@ -56,7 +56,7 @@ test('browser actions reject URLs, shell commands, shortcuts and out-of-bounds c
   assert.equal(validateBrowserAction({type:'key',key:'Enter'}).key,'Enter');
 });
 
-test('manual browser owns the global queue, shows a challenge for the human, and cleans up on stop', async () => {
+test('manual browser leaves the reset queue free, shows the site response and cleans up on stop', async () => {
   const fake=model(), browser=new AdminBrowser(fake.launch), owner='owner';
   const {id}=browser.start(owner);
   let resetRan=false;
@@ -64,7 +64,8 @@ test('manual browser owns the global queue, shows a challenge for the human, and
   try{
     await ready(browser,owner,id);
     assert.equal(browser.status(owner,id).httpStatus,403);
-    assert.equal(resetRan,false);
+    assert.equal(resetRan,true);
+    assert.equal((await waiting).success,true);
     assert.throws(()=>browser.start(owner));
     assert.throws(()=>browser.status('another-owner',id));
     assert.throws(()=>browser.status(owner,'b'.repeat(64)));
@@ -83,19 +84,66 @@ test('manual browser owns the global queue, shows a challenge for the human, and
   await assert.rejects(()=>browser.frame(owner,id));
 });
 
-test('manual browser automatically closes at the existing two-minute job deadline',async t=>{
-  t.mock.timers.enable({apis:['setTimeout']});
+test('manual browser stays open beyond two minutes and closes exactly three hours after readiness',async t=>{
+  t.mock.timers.enable({apis:['setTimeout','Date']});
   const fake=model(),browser=new AdminBrowser(fake.launch),{id}=browser.start('owner');
   try{
     await ready(browser,'owner',id);
+    assert.equal(browser.status('owner',id).expiresAt,Date.now()+3*60*60_000);
     t.mock.timers.tick(120_000);
+    assert.equal(browser.status('owner',id).state,'ready');
+    assert.equal((await browser.frame('owner',id)).toString(),'test-frame');
+    t.mock.timers.tick(3*60*60_000-120_000-1);
+    assert.equal(browser.status('owner',id).state,'ready');
+    t.mock.timers.tick(1);
     for(let i=0;i<10&&browser.status('owner',id).state!=='closed';i++)await new Promise(setImmediate);
     assert.equal(browser.status('owner',id).state,'closed');
     assert.equal(fake.closes,1);
+    assert.match(browser.status('owner',id).note,/three-hour session has finished/);
   }finally{await browser.stop('owner',id);t.mock.timers.reset();}
 });
 
-test('launch failure closes the session and releases the reset queue',async()=>{
+test('viewer opens while a password reset already owns the reset queue',async()=>{
+  let release;
+  const running=runResetJob('already-running-reset',async()=>{
+    await new Promise(resolve=>{release=resolve;});return {success:true};
+  });
+  await new Promise(setImmediate);
+  const fake=model(),browser=new AdminBrowser(fake.launch),{id}=browser.start('owner');
+  try{
+    await ready(browser,'owner',id);
+    assert.equal(browser.status('owner',id).state,'ready');
+  }finally{release();await running;await browser.stop('owner',id);}
+});
+
+test('a slow startup has its own deadline and does not consume the three-hour session',async t=>{
+  t.mock.timers.enable({apis:['setTimeout','Date']});
+  const fake=model();let launch;
+  const browser=new AdminBrowser(()=>new Promise(resolve=>{launch=resolve;})),{id}=browser.start('owner');
+  try{
+    assert.equal(browser.status('owner',id).expiresAt,undefined);
+    t.mock.timers.tick(60_000);
+    launch(await fake.launch());
+    await ready(browser,'owner',id);
+    assert.equal(browser.status('owner',id).expiresAt,Date.now()+3*60*60_000);
+    t.mock.timers.tick(30_000);
+    assert.equal(browser.status('owner',id).state,'ready');
+  }finally{await browser.stop('owner',id);t.mock.timers.reset();}
+});
+
+test('a stuck startup is aborted after 90 seconds without holding up resets',async t=>{
+  t.mock.timers.enable({apis:['setTimeout','Date']});
+  const browser=new AdminBrowser(signal=>new Promise((resolve,reject)=>signal.addEventListener('abort',()=>reject(signal.reason),{once:true}))),{id}=browser.start('owner');
+  try{
+    t.mock.timers.tick(90_000);
+    for(let i=0;i<10&&browser.status('owner',id).state!=='closed';i++)await new Promise(setImmediate);
+    assert.equal(browser.status('owner',id).state,'closed');
+    assert.match(browser.status('owner',id).note,/startup exceeded 90 seconds/);
+    assert.equal((await runResetJob('after-viewer-startup-timeout',async()=>({success:true}))).success,true);
+  }finally{await browser.stop('owner',id);t.mock.timers.reset();}
+});
+
+test('launch failure closes the viewer without affecting the reset queue',async()=>{
   const browser=new AdminBrowser(async()=>{throw Error('private system error');});
   const {id}=browser.start('owner');
   for(let i=0;i<20&&browser.status('owner',id).state!=='closed';i++)await new Promise(setImmediate);

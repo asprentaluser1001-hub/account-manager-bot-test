@@ -39,4 +39,4 @@ bash deploy/apply-reset-hotfix.sh
 trap - ERR
 echo 'Sign in to your dashboard in Safari, then open:'
 echo 'https://flingroulette.duckdns.org/admin-browser'
-echo 'Each browser session lasts at most two minutes. Close it when finished.'
+echo 'Each browser session lasts up to three hours. Password resets keep running. Close it when finished.'
