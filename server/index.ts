@@ -18,6 +18,7 @@ import {checkoutRouter,paymentSettingsRouter} from './routes/checkout';
 import {pushRouter} from './routes/push';
 import {v3OpsRouter} from './routes/v3Ops';
 import {miniAppRouter,miniAppAdminRouter} from './routes/miniApp';
+import {adminBrowserRouter,serveAdminBrowserPage,shutdownAdminBrowser} from './routes/adminBrowser';
 
 const sandboxMode = process.env.SANDBOX_MODE === 'true';
 const v3Preview = process.env.V3_PREVIEW === 'true';
@@ -48,6 +49,8 @@ app.use('/api/test-orders', testOrdersRouter);
 app.use('/api/v3/ops',v3OpsRouter);
 app.use('/api/miniapp',miniAppRouter);
 app.use('/api/miniapp-admin',miniAppAdminRouter);
+app.use('/api/admin-browser',adminBrowserRouter);
+app.get('/admin-browser',serveAdminBrowserPage);
 
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
@@ -71,3 +74,9 @@ app.listen(PORT, () => {
   startAutoResetScheduler();
   startTestBot();
 });
+
+if (process.env.ENABLE_ADMIN_BROWSER_DIAGNOSTICS === 'true') {
+  process.once('SIGTERM', () => {
+    void shutdownAdminBrowser().finally(() => process.exit(0));
+  });
+}

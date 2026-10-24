@@ -1,0 +1,48 @@
+const assert=require('node:assert/strict');
+const {createRequire}=require('node:module');
+const requireApp=createRequire(require('node:path').join(__dirname,'..','package.json'));
+process.env.ADMIN_PASSWORD='ui-test-admin-password';
+process.env.JWT_SECRET='ui-test-secret-with-at-least-thirty-two-characters';
+process.env.ENABLE_ADMIN_BROWSER_DIAGNOSTICS='true';
+process.env.ADMIN_BROWSER_ORIGIN='https://dashboard.example';
+const express=requireApp('express'),jwt=requireApp('jsonwebtoken'),{chromium}=requireApp('playwright');
+const {createAdminBrowserRouter,serveAdminBrowserPage}=requireApp('./dist/routes/adminBrowser.js');
+(async()=>{
+ const browser=await chromium.launch({...(process.env.BROWSER_TEST_EXECUTABLE?{executablePath:process.env.BROWSER_TEST_EXECUTABLE}:{}),headless:true,args:['--no-sandbox']});
+ let server;
+ try{
+  const framePage=await browser.newPage({viewport:{width:1280,height:720}});
+  await framePage.setContent('<h1>Local fixture: VPS browser</h1><input placeholder="Email"><button>Login</button>');
+  const jpeg=await framePage.screenshot({type:'jpeg'});await framePage.close();
+  const calls=[],sid='a'.repeat(64);let stopped=false;
+  const fake={start:()=>({id:sid}),status:()=>({state:stopped?'closed':'ready',expiresAt:Date.now()+120000,httpStatus:403}),frame:async()=>jpeg,action:async(owner,id,body)=>calls.push(body),stop:async()=>{stopped=true;}};
+  const app=express();app.use(express.json());app.get('/admin-browser',serveAdminBrowserPage);app.use('/api/admin-browser',(req,_res,next)=>{if(req.method==='POST')assert.equal(req.get('Origin'),'https://dashboard.example');next();},createAdminBrowserRouter(fake));
+  server=await new Promise(resolve=>{const s=app.listen(0,'127.0.0.1',()=>resolve(s));});
+  const base='http://127.0.0.1:'+server.address().port;
+  const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true});
+  await context.addInitScript(token=>localStorage.setItem('am_token',token),jwt.sign({role:'admin'},process.env.JWT_SECRET));
+  await context.route('https://dashboard.example/**',async route=>{
+   const request=route.request(),url=new URL(request.url());
+   const response=await route.fetch({url:base+url.pathname,headers:request.headers()});
+   await route.fulfill({response});
+  });
+  const page=await context.newPage();page.on('pageerror',e=>{throw e;});
+  await page.goto('https://dashboard.example/admin-browser');
+  assert.equal(await page.locator('#frame').isVisible(),false);
+  await page.locator('#start').click();
+  try{await page.locator('#controls').waitFor({state:'visible',timeout:8000});}catch(e){console.log('STATUS',await page.locator('#status').textContent());throw e;}
+  await page.locator('#frame').click({position:{x:100,y:100}});
+  await page.locator('#text').fill('test-human-input');
+  await page.locator('#typing button').click();
+  await page.waitForFunction(()=>document.getElementById('text').value==='');
+  await page.locator('[data-key="Enter"]').click();
+  await page.locator('#stop').click();
+  await page.waitForFunction(()=>document.getElementById('start').disabled===false);
+  assert.equal(await page.locator('#frame').isVisible(),false);
+  assert.equal(await page.evaluate(()=>sessionStorage.getItem('fr_manual_browser')),null);
+  assert.ok(calls.some(a=>a.type==='click'&&a.x>=0&&a.x<1280&&a.y>=0&&a.y<720));
+  assert.ok(calls.some(a=>a.type==='text'&&a.text==='test-human-input'));
+  assert.ok(calls.some(a=>a.type==='key'&&a.key==='Enter'));
+  console.log('Mobile browser UI fixture passed: auth, start, image, click, hidden text input, key, stop.');
+ }finally{if(server)await new Promise(resolve=>server.close(resolve));await browser.close();}
+})().catch(e=>{console.error(e.message);process.exitCode=1;});
