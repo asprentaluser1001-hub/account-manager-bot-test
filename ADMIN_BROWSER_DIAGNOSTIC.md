@@ -51,6 +51,25 @@ recovery afterward. Saving recovery credentials ends linked bookings and leaves
 the ID quarantined. The viewer does not automatically update passwords, mark a
 reset successful, release accounts, or approve orders.
 
+## Diagnose browser startup
+
+If the viewer cannot open, check the local headed-browser fixture while no reset
+is running:
+
+```bash
+cd /root/flingroulette-v4-prod/server && node tests/admin-browser-display.browser.cjs
+```
+
+It uses the installed viewer code with a local test page, without opening the
+website, reading the account database, changing passwords, or restarting the
+service. The observer allows up to 60 seconds so the launcher's own 20-second
+timeout and cleanup can complete. A failed launch prints the Playwright launch
+error to this terminal only, before any website or human input is loaded.
+The previous fixture stopped observing after 15 seconds, which could report
+`opening != ready` and cancel the browser before the launcher reported its
+actual result. Such output does not prove Chromium crashed or that its D-Bus
+warnings caused the viewer failure.
+
 ## Disable after inspection
 
 ```bash
