@@ -31,6 +31,8 @@ they are not cancelled. Stop it when finished. If a reset is already running,
 the viewer waits its turn. A queued request expires after five minutes.
 Headed Chromium has up to 60 seconds to start, within that existing two-minute
 limit. The reset worker's browser timeout and verification policy are unchanged.
+Each screenshot allows up to 15 seconds on slower hosts. A capture timeout or
+first-frame rendering error is retried once without navigation or user input.
 
 ## Access and lifecycle
 

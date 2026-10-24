@@ -224,12 +224,14 @@ export class AdminBrowser {
   }
   frame(owner: string, id: string) {
     return this.operate(owner, id, async page => {
-      const capture = () => page.screenshot({ type: 'jpeg', quality: 55, timeout: 5000 });
+      const capture = () => page.screenshot({ type: 'jpeg', quality: 55, timeout: 15_000 });
       try { return await capture(); }
       catch (error) {
         // Xvfb can have a page before Chromium's first drawable frame exists.
-        // Retry this specific local rendering error once; no page reload/input.
-        if (!(error instanceof Error) || !error.message.includes('Unable to capture screenshot')) throw error;
+        // A slow first frame can also exceed the capture deadline. Retry only
+        // these rendering failures once, without reloading or repeating input.
+        if (!(error instanceof errors.TimeoutError)
+          && (!(error instanceof Error) || !error.message.includes('Unable to capture screenshot'))) throw error;
         await page.waitForTimeout(150);
         return capture();
       }
