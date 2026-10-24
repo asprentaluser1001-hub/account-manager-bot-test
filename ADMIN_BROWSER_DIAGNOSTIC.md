@@ -10,11 +10,14 @@ changes work and not a mechanism to share challenge clearance with reset jobs.
 cd /root/flingroulette-v4-prod && git fetch origin diagnostics/phone-vps-browser && git merge --ff-only FETCH_HEAD && bash deploy/setup-admin-browser.sh
 ```
 
-Setup installs Xvfb and keyboard utilities if absent and enables two environment variables through a
-dedicated systemd drop-in. It compiles before restarting the existing service
+Setup installs Xvfb, keyboard utilities, D-Bus and desktop settings schemas if
+absent and enables two environment variables through a dedicated systemd
+drop-in. It compiles before restarting the existing service
 using the backed-up installer. No new public listener, VNC port, SSH forwarding,
 database schema, npm dependency, or frontend build is needed. The display server
-uses a local Unix socket and does not listen on TCP.
+uses a local Unix socket and does not listen on TCP. Each viewer also starts a
+private desktop session bus with a Unix socket inside its temporary profile.
+Chromium receives that bus address, never an inherited desktop session address.
 
 Sign in to the normal dashboard in Safari, then open
 https://flingroulette.duckdns.org/admin-browser in that same browser. Tap **Open
@@ -26,6 +29,10 @@ The live browser is visible for up to two minutes, including startup time, and
 holds the existing global browser queue while active. Scheduled resets wait;
 they are not cancelled. Stop it when finished. If a reset is already running,
 the viewer waits its turn. A queued request expires after five minutes.
+Headed Chromium has up to 60 seconds to start, within that existing two-minute
+limit. The reset worker's browser timeout and verification policy are unchanged.
+Each screenshot allows up to 15 seconds on slower hosts. A capture timeout or
+first-frame rendering error is retried once without navigation or user input.
 
 ## Access and lifecycle
 
@@ -51,6 +58,25 @@ recovery afterward. Saving recovery credentials ends linked bookings and leaves
 the ID quarantined. The viewer does not automatically update passwords, mark a
 reset successful, release accounts, or approve orders.
 
+## Diagnose browser startup
+
+If the viewer cannot open, check the local headed-browser fixture while no reset
+is running:
+
+```bash
+cd /root/flingroulette-v4-prod/server && node tests/admin-browser-display.browser.cjs
+```
+
+It uses the installed viewer code with a local test page, without opening the
+website, reading the account database, changing passwords, or restarting the
+service. The observer allows up to 100 seconds so the launcher's own 60-second
+timeout and cleanup can complete. A failed launch prints the Playwright launch
+error to this terminal only, before any website or human input is loaded.
+The previous fixture stopped observing after 15 seconds, which could report
+`opening != ready` and cancel the browser before the launcher reported its
+actual result. Such output does not prove Chromium crashed or that its D-Bus
+warnings caused the viewer failure.
+
 ## Disable after inspection
 
 ```bash
@@ -59,4 +85,5 @@ cd /root/flingroulette-v4-prod && bash deploy/disable-admin-browser.sh
 
 This removes only the diagnostic drop-in and restarts the existing service. On service shutdown, the viewer closes its browser and removes the temporary profile before exiting. It
 leaves Xvfb installed but does not keep a display process running. Active browser
-profiles are temporary and contain no shared reset-worker state.
+profiles are temporary and contain no shared reset-worker state. The private
+desktop bus is also stopped and its socket removed when the viewer closes.

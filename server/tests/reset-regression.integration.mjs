@@ -42,6 +42,26 @@ test('a failed job releases the slot for other accounts', async () => {
   assert.equal((await next).success, true);
 });
 
+test('the execution deadline is retryable while an explicit cancellation is not',async t=>{
+  t.mock.timers.enable({apis:['setTimeout']});
+  try{
+    const started=defer();
+    const timed=runResetJob('deadline-classification',signal=>new Promise((_resolve,reject)=>{
+      signal.addEventListener('abort',()=>reject(signal.reason),{once:true});started.resolve();
+    }));
+    await started.promise;t.mock.timers.tick(120_000);
+    const result=await timed;
+    assert.equal(result.retryable,true);assert.equal(result.errorCode,'timeout');
+    const parent=new AbortController(),ready=defer();
+    const cancelled=runResetJob('cancel-classification',signal=>new Promise((_resolve,reject)=>{
+      signal.addEventListener('abort',()=>reject(signal.reason),{once:true});ready.resolve();
+    }),parent.signal);
+    await ready.promise;parent.abort(new Error('Stopped by admin'));
+    const stopped=await cancelled;
+    assert.equal(stopped.retryable,false);assert.equal(stopped.errorCode,'cancelled');
+  }finally{t.mock.timers.reset();}
+});
+
 function addAccount(id, candidate = null) {
   db.prepare('INSERT INTO accounts(id,name,email,password,reset_candidate_password,created_at) VALUES (?,?,?,?,?,?)')
     .run(id, id, id + '@example.invalid', 'old-password', candidate, new Date().toISOString());
@@ -51,15 +71,16 @@ function account(id) { return db.prepare('SELECT * FROM accounts WHERE id=?').ge
 // The browser model changes its external password only when submission completes.
 // Authenticated selectors reject invalid credentials, including in a fresh profile.
 function fakeBrowser(initialPassword, { failVerification = false, submissionTimeout = false, navigationError = null,
-  initialStatus = 200, verificationStatus = 200, verificationTitle = 'Flingster', deferSubmission = false, submissionError = null } = {}) {
+  initialStatus = 200, verificationStatus = 200, verificationTitle = 'Flingster', deferSubmission = false, submissionError = null, hangVerification = false } = {}) {
   let external = initialPassword, launches = 0, submissions = 0;
   let pending;
-  const logins = [], events = [], contexts = [], launchOptions = [];
-  return {
+  const logins = [], events = [], contexts = [], launchOptions = [], pendingNavigations = [];
+  const model = {
+    engines: 0,
     logins, events, contexts, launchOptions,
     get external() { return external; },
     get submissions() { return submissions; },
-    launch: async (_profile, options) => {
+    newContext: async options => {
       launchOptions.push(structuredClone(options));
       const launch = ++launches;
       if (pending) {
@@ -71,7 +92,10 @@ function fakeBrowser(initialPassword, { failVerification = false, submissionTime
       let loggedIn = false, submitted = false;
       const page = {
         setDefaultTimeout() {}, setDefaultNavigationTimeout() {},
-        goto: async () => ({ status: () => launch === 1 ? initialStatus : verificationStatus }),
+        goto: async () => {
+          if(hangVerification && launch>1)return new Promise((_resolve,reject)=>pendingNavigations.push(reject));
+          return {status:()=>launch===1?initialStatus:verificationStatus};
+        },
         title: async () => launch === 1 ? 'Flingster' : verificationTitle,
         getByText: () => ({ all: async () => [] }),
         fill: async (s, v) => { fields[s] = v; },
@@ -109,9 +133,17 @@ function fakeBrowser(initialPassword, { failVerification = false, submissionTime
       return context;
     },
   };
+  model.launch=async()=>{
+    model.engines++;
+    return {newContext:model.newContext,close:async()=>{
+      for(const context of contexts)context.closed=true;
+      for(const reject of pendingNavigations)reject(new Error('Browser closed'));
+    }};
+  };
+  return model;
 }
 async function withBrowser(fake, work) {
-  const original = chromium.launchPersistentContext;
+  const original = chromium.launch;
   const navigation=require('../dist/lib/resetNavigation.js');
   const originals={openResetLogin:navigation.openResetLogin,openVerificationLogin:navigation.openVerificationLogin,findResetAccount:navigation.findResetAccount};
   navigation.openResetLogin=navigation.openVerificationLogin=async page=>page.waitForSelector('#user-email',{state:'visible'});
@@ -119,12 +151,12 @@ async function withBrowser(fake, work) {
     await page.waitForSelector('.mw-user.red-lnk',{state:'visible'});
     return {click:async()=>page.click('.mw-user.red-lnk')};
   };
-  chromium.launchPersistentContext = fake.launch;
+  chromium.launch = fake.launch;
   try { return await work(); }
-  finally { chromium.launchPersistentContext = original; Object.assign(navigation,originals); }
+  finally { chromium.launch = original; Object.assign(navigation,originals); }
 }
 
-test('normal reset waits for submission and verifies in a fresh profile before saving', async () => {
+test('normal reset uses one engine and verifies in an isolated context before saving', async () => {
   addAccount('normal');
   const fake = fakeBrowser('old-password');
   const result = await withBrowser(fake, () => resetAccountPassword('normal'));
@@ -132,6 +164,8 @@ test('normal reset waits for submission and verifies in a fresh profile before s
   assert.equal(account('normal').password, fake.external);
   assert.equal(account('normal').reset_candidate_password, null);
   assert.equal(fake.logins.length, 2);
+  assert.equal(fake.engines, 1);
+  assert.equal(fake.contexts.length, 2);
   assert.ok(fake.events.includes('submission-complete'));
 });
 
@@ -223,6 +257,26 @@ test('unverified candidate survives a submission UI timeout followed by verifica
   assert.equal(account('uncertain-submit').password, 'old-password');
   assert.equal(account('uncertain-submit').reset_candidate_password, fake.external);
   assert.ok(fake.contexts.every(c => c.closed));
+});
+
+test('a verification execution timeout preserves the candidate and remains automatically retryable',async t=>{
+  addAccount('verification-deadline');
+  const fake=fakeBrowser('old-password',{submissionTimeout:true,hangVerification:true});
+  t.mock.timers.enable({apis:['setTimeout']});
+  try{
+    const result=await withBrowser(fake,async()=>{
+      const pending=resetAccountPassword('verification-deadline');
+      for(let i=0;i<30&&fake.contexts.length<2;i++)await new Promise(setImmediate);
+      assert.equal(fake.contexts.length,2);
+      t.mock.timers.tick(120_000);
+      return pending;
+    });
+    assert.equal(result.success,false);assert.equal(result.retryable,true);
+    assert.equal(result.errorCode,'timeout');assert.equal(fake.engines,1);
+    assert.equal(account('verification-deadline').password,'old-password');
+    assert.equal(account('verification-deadline').reset_candidate_password,fake.external);
+    assert.ok(fake.contexts.every(context=>context.closed));
+  }finally{t.mock.timers.reset();}
 });
 
 test('non-timeout submission errors do not start same-attempt verification', async () => {

@@ -59,7 +59,15 @@ test('V3 isolated mock checkout and booking lifecycle',async()=>{
   assert.equal(afterHide.data.summary.bookings,beforeHide.data.summary.bookings-1);
   assert.equal((await call(`/api/test-orders/${orderId}/refund`,'PATCH',{status:'requested',note:'Test tracking'},token)).status,200);
   const report=await call('/api/test-orders/v3/finance','GET',undefined,token);assert.equal(report.status,200);assert.ok(report.data.total>=150);assert.ok(report.data.refunds.some(refund=>refund.order_id===orderId));
-  assert.equal((await call(`/api/accounts/${available[1].id}/release`,'POST',{},token)).status,200);
+  const release=await call(`/api/accounts/${available[1].id}/release`,'POST',{},token);
+  assert.equal(release.status,202);
+  let releaseState;
+  for(let i=0;i<80;i++){
+   releaseState=await call(`/api/accounts/${available[1].id}/reset-jobs/${release.data.job.id}`,'GET',undefined,token);
+   if(releaseState.data.job.status==='succeeded')break;
+   await new Promise(r=>setTimeout(r,25));
+  }
+  assert.equal(releaseState.data.job.status,'succeeded');
   const earningsBefore=(await call('/api/test-orders','GET',undefined,token)).data;
   const reportBefore=(await call('/api/test-orders/v3/finance','GET',undefined,token)).data;
   assert.equal((await call('/api/test-orders/history/hide','POST',{ids:[orderId]},token)).status,200);

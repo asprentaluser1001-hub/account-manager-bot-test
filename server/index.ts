@@ -8,7 +8,9 @@ import fs from 'fs';
 
 import { authRouter } from './auth';
 import { accountsRouter, historyRouter } from './routes/accounts';
-import { startAutoResetScheduler } from './lib/autoResetScheduler';
+import { startAutoResetScheduler, stopAutoResetScheduler } from './lib/autoResetScheduler';
+import { startManualResetWorker, stopManualResetWorker } from './lib/manualResetJobs';
+import { shutdownResetJobs } from './lib/resetJobs';
 import './db'; // initialize the database on startup
 import { testOrdersRouter } from './routes/testOrders';
 import { startTestBot } from './lib/telegramBot';
@@ -71,12 +73,17 @@ if (clientDist) {
 
 app.listen(PORT, () => {
   console.log(`Account Manager running on port ${PORT}`);
+  startManualResetWorker();
   startAutoResetScheduler();
   startTestBot();
 });
 
-if (process.env.ENABLE_ADMIN_BROWSER_DIAGNOSTICS === 'true') {
-  process.once('SIGTERM', () => {
-    void shutdownAdminBrowser().finally(() => process.exit(0));
-  });
-}
+let stopping=false;
+const shutdown=()=>{
+  if(stopping)return;stopping=true;
+  stopAutoResetScheduler();
+  void Promise.allSettled([stopManualResetWorker(),shutdownAdminBrowser(),shutdownResetJobs()])
+    .finally(()=>process.exit(0));
+};
+process.once('SIGTERM',shutdown);
+process.once('SIGINT',shutdown);

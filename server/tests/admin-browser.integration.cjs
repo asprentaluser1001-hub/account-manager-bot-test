@@ -2,6 +2,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { Script } = require('node:vm');
+const { errors } = require('playwright');
 process.env.ADMIN_PASSWORD = 'viewer-test-admin-password';
 process.env.JWT_SECRET = 'viewer-test-secret-with-at-least-thirty-two-characters';
 process.env.V3_PREVIEW = 'false';
@@ -103,10 +104,11 @@ test('launch failure closes the session and releases the reset queue',async()=>{
   assert.equal((await runResetJob('after-failed-manual',async()=>({success:true}))).success,true);
 });
 
-test('a transient first-frame capture error is retried once without navigating again',async()=>{
+for(const failure of [Error('Protocol error: Unable to capture screenshot'),new errors.TimeoutError('Taking screenshot exceeded its deadline')])
+test(`a transient first-frame capture ${failure.name} is retried once without navigating again`,async()=>{
   const fake=model(),browser=new AdminBrowser(fake.launch),{id}=browser.start('owner');
   let frames=0;
-  fake.page.screenshot=async()=>{if(++frames===1)throw Error('Protocol error: Unable to capture screenshot');return Buffer.from('frame');};
+  fake.page.screenshot=async()=>{if(++frames===1)throw failure;return Buffer.from('frame');};
   try{
     await ready(browser,'owner',id);
     assert.equal((await browser.frame('owner',id)).toString(),'frame');

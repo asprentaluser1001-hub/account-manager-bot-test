@@ -1,10 +1,7 @@
-import { chromium, errors } from 'playwright';
-import * as os from 'os';
-import * as path from 'path';
-import * as fs from 'fs';
+import { chromium, errors, Browser, BrowserContext } from 'playwright';
 import { db, AccountRow } from '../db';
 import { sandboxReset } from './testOrders';
-import {runResetJob,ResetResult} from './resetJobs';
+import {runResetJob,ResetResult,ResetJobTimeoutError} from './resetJobs';
 import {openResetLogin,openVerificationLogin,findResetAccount,ResetNavigationError,checkResetPage} from './resetNavigation';
 
 /**
@@ -42,19 +39,10 @@ function generatePassword(): string {
   return pw;
 }
 
-function createTempUserDataDir(): string {
-  const dir = path.join(os.tmpdir(), `pw-reset-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
-  fs.mkdirSync(dir, { recursive: true });
-  return dir;
+export function resetAccountPassword(accountId:string, parentSignal?:AbortSignal, onProgress?:(stage:string)=>void):Promise<ResetResult>{
+ return runResetJob(accountId,signal=>performReset(accountId,signal,onProgress),parentSignal);
 }
-function removeTempDir(dir: string): void {
-  try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* best effort */ }
-}
-
-export function resetAccountPassword(accountId:string, parentSignal?:AbortSignal):Promise<ResetResult>{
- return runResetJob(accountId,signal=>performReset(accountId,signal),parentSignal);
-}
-async function performReset(accountId:string,signal:AbortSignal):Promise<ResetResult>{
+async function performReset(accountId:string,signal:AbortSignal,onProgress?:(stage:string)=>void):Promise<ResetResult>{
   signal.throwIfAborted();
   if (process.env.SANDBOX_MODE === 'true') return sandboxReset(accountId);
   const account = db
@@ -62,30 +50,30 @@ async function performReset(accountId:string,signal:AbortSignal):Promise<ResetRe
     .get(accountId) as (AccountRow & { reset_candidate_password: string | null }) | undefined;
 
   if (!account) {
-    return { success: false, error: 'Account not found' };
+    return { success: false, error: 'Account not found', retryable: false, errorCode: 'account_missing' };
   }
 
-  const userDataDir = createTempUserDataDir();
-  const verificationDir = createTempUserDataDir();
-  let context: Awaited<ReturnType<typeof chromium.launchPersistentContext>> | null = null;
-  let submissionContext: Awaited<ReturnType<typeof chromium.launchPersistentContext>> | null = null;
+  let browser: Browser | null = null;
+  let context: BrowserContext | null = null;
 
   let navigationStatus: number | undefined;
   let stage = 'launching browser';
+  const started = Date.now();
+  const setStage = (next:string) => { stage=next; onProgress?.(next); };
   let changeMayHaveBeenSubmitted = false;
+  let proposedPassword: string | undefined;
   let activePage: import('playwright').Page | undefined;
   const stop=()=>{
-    if(context)void context.close().catch(()=>{});
-    if(submissionContext)void submissionContext.close().catch(()=>{});
+    if(browser)void browser.close().catch(()=>{});
   };
   signal.addEventListener('abort',stop,{once:true});
   try {
     signal.throwIfAborted();
 
+    setStage('launching browser');
+    browser = await chromium.launch({ headless:true, timeout:20_000, args:['--no-sandbox','--disable-setuid-sandbox'] });
+    signal.throwIfAborted();
     const browserOptions = {
-      headless: true,
-      timeout: 20_000,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
       // Match the fixed application preset that reached visible login controls
       // in the VPS landing-page diagnostic. Do not randomize it between jobs.
       // This is not proof of authenticated access; challenge checks still apply.
@@ -97,8 +85,8 @@ async function performReset(accountId:string,signal:AbortSignal):Promise<ResetRe
     // Verification can fail after the site has already changed the password.
     // Confirm that persisted candidate before trying the old stored credential.
     if (account.reset_candidate_password) {
-      stage = 'checking previously attempted password';
-      context = await chromium.launchPersistentContext(verificationDir, browserOptions);
+      setStage('checking previously attempted password');
+      context = await browser.newContext(browserOptions);
       signal.throwIfAborted();
       const candidatePage = context.pages()[0] || await context.newPage();
       activePage = candidatePage;
@@ -127,11 +115,9 @@ async function performReset(accountId:string,signal:AbortSignal):Promise<ResetRe
       }
       await context.close();
       context = null;
-      removeTempDir(verificationDir);
-      fs.mkdirSync(verificationDir, { recursive: true });
     }
-    stage = 'launching browser';
-    context = await chromium.launchPersistentContext(userDataDir, browserOptions);
+    setStage('opening login session');
+    context = await browser.newContext(browserOptions);
 
     signal.throwIfAborted();
     const page = context.pages()[0] || (await context.newPage());
@@ -139,42 +125,42 @@ async function performReset(accountId:string,signal:AbortSignal):Promise<ResetRe
     page.setDefaultNavigationTimeout(20000);
 
     activePage = page;
-    stage = 'loading initial login page';
+    setStage('loading initial login page');
     // 1. Open site
     const initialResponse = await page.goto(SITE_URL, { waitUntil: 'domcontentloaded' });
     navigationStatus = initialResponse?.status();
     await checkResetPage(page, navigationStatus);
 
     // 2. Open login modal
-    stage = 'opening initial login form';
+    setStage('opening initial login form');
     await openResetLogin(page, signal);
 
-    stage = 'submitting current credentials';
+    setStage('submitting current credentials');
     // 3. Login
     await page.waitForSelector(SEL_LOGIN_EMAIL, { state: 'visible' });
     await page.fill(SEL_LOGIN_EMAIL, account.email);
     await page.fill(SEL_LOGIN_PASSWORD, account.password);
     await page.click(SEL_LOGIN_SUBMIT);
 
-    stage = 'opening account after initial login';
+    setStage('opening account after initial login');
     const accountLink = await findResetAccount(page, signal);
     await accountLink.click();
 
-    stage = 'opening password change form';
+    setStage('opening password change form');
     // 5. Open change-password modal
     await page.waitForSelector(SEL_CHANGE_PASSWORD_OPEN, { state: 'visible' });
     await page.click(SEL_CHANGE_PASSWORD_OPEN);
 
     // 6. Fill form
     await page.waitForSelector(SEL_CURRENT_PASSWORD, { state: 'visible' });
-    const newPassword = generatePassword();
+    const newPassword = proposedPassword = generatePassword();
     await page.fill(SEL_CURRENT_PASSWORD, account.password);
     await page.fill(SEL_NEW_PASSWORD, newPassword);
     await page.fill(SEL_CONFIRM_PASSWORD, newPassword);
 
     signal.throwIfAborted();
     db.prepare('UPDATE accounts SET reset_candidate_password=? WHERE id=?').run(newPassword,account.id);
-    stage = 'submitting password change';
+    setStage('submitting password change');
     // Treat an interrupted submit as uncertain: the site may have changed the password.
     changeMayHaveBeenSubmitted = true;
     // 7. Submit
@@ -191,34 +177,35 @@ async function performReset(accountId:string,signal:AbortSignal):Promise<ResetRe
       if (!(error instanceof errors.TimeoutError)) throw error;
       console.log('[PasswordReset] Submission UI unconfirmed; verifying candidate in the same attempt');
       // Keep any in-flight submission alive until verification finishes.
-      submissionContext = context;
+      // The browser retains the submitting context until final cleanup.
       context = null;
     }
 
-    // Verify the new credentials in an entirely fresh browser profile.
+    // A fresh context has isolated cookies and storage. Reuse the engine,
+    // not the login session: two Chromium processes overloaded small VPS hosts.
     // Missing error text alone is not proof that the change succeeded.
     if (context) await context.close();
     context=null;
     signal.throwIfAborted();
-    stage = 'launching verification browser';
+    setStage('opening verification session');
     // Keep the same page presentation settings, but do not copy cookies or
     // authenticated storage: verification must prove the new credentials work.
-    context=await chromium.launchPersistentContext(verificationDir, browserOptions);
+    context=await browser.newContext(browserOptions);
     signal.throwIfAborted();
     const verificationPage=context.pages()[0]||await context.newPage();
     activePage = verificationPage;
-    stage = 'loading verification login page';
+    setStage('loading verification login page');
     verificationPage.setDefaultTimeout(15000);
     const verificationResponse = await verificationPage.goto(SITE_URL,{waitUntil:'domcontentloaded',timeout:20000});
     navigationStatus = verificationResponse?.status();
     await checkResetPage(verificationPage, navigationStatus);
-    stage = 'opening verification login form';
+    setStage('opening verification login form');
     await openVerificationLogin(verificationPage, signal, SITE_URL);
-    stage = 'submitting new credentials for verification';
+    setStage('submitting new credentials for verification');
     await verificationPage.fill(SEL_LOGIN_EMAIL,account.email);
     await verificationPage.fill(SEL_LOGIN_PASSWORD,newPassword);
     await verificationPage.click(SEL_LOGIN_SUBMIT);
-    stage = 'confirming verified account login';
+    setStage('confirming verified account login');
     const verifiedAccount = await findResetAccount(verificationPage, signal);
     await verifiedAccount.click();
     await verificationPage.waitForSelector(SEL_CHANGE_PASSWORD_OPEN, { state: 'visible' });
@@ -235,7 +222,10 @@ async function performReset(accountId:string,signal:AbortSignal):Promise<ResetRe
     return { success: true, newPassword };
   } catch (err) {
     const cause = signal.aborted ? signal.reason : err;
-    const detail = cause instanceof Error ? cause.message : 'Unknown error';
+    let detail = cause instanceof Error ? cause.message : 'Unknown error';
+    for(const password of [account.password,account.reset_candidate_password,proposedPassword]) {
+      if(password)detail=detail.split(password).join('[redacted]');
+    }
     let location = 'unavailable';
     try { const url = new URL(activePage?.url() || SITE_URL); location = url.origin + url.pathname; } catch {}
     let title = 'unavailable';
@@ -245,20 +235,22 @@ async function performReset(accountId:string,signal:AbortSignal):Promise<ResetRe
     const rejected = cause instanceof ResetNavigationError && cause.kind === 'credentials';
     // An unconfirmed login is transient. A submitted change remains recoverable
     // because the next attempt checks its candidate before another change.
-    const retryable = !signal.aborted && !challenge && (!rejected || changeMayHaveBeenSubmitted);
+    const timeout = signal.aborted && cause instanceof ResetJobTimeoutError;
+    const retryable = (!signal.aborted || timeout) && !challenge && (!rejected || changeMayHaveBeenSubmitted);
     const guidance = changeMayHaveBeenSubmitted
       ? retryable ? ' Candidate password preserved; the next automatic attempt will verify it first.'
         : ' Candidate password preserved; resolve the login or security challenge manually before retrying.'
       : !retryable ? ' Check the current password and signed-in account screen manually before retrying.' : ' Automatic retries remain enabled.';
     const message = `${stage}: ${detail} (page: ${location}; HTTP: ${navigationStatus ?? 'unknown'}; title: ${JSON.stringify(title)})${guidance}`;
     console.error(`[PasswordReset] ✗ ${account.name} — ${message}`);
-    return { success: false, error: message, retryable };
+    return { success: false, error: message, retryable, errorCode: signal.aborted && !timeout ? 'cancelled'
+      : challenge ? 'site_blocked' : timeout ? 'timeout' : rejected ? 'credentials_rejected' : 'transient' };
   } finally {
     signal.removeEventListener('abort',stop);
-    if (context) await context.close().catch(()=>{});
-    if (submissionContext) await submissionContext.close().catch(()=>{});
-    removeTempDir(userDataDir);
-    removeTempDir(verificationDir);
+    // Browser.close waits for all contexts and Chromium's temporary profile.
+    // Do not release the global FIFO slot until that cleanup has finished.
+    if (browser) await browser.close().catch(()=>{});
+    console.log(`[PasswordReset] ${account.name} — finished after ${((Date.now()-started)/1000).toFixed(1)}s at ${stage}`);
   }
 }
 

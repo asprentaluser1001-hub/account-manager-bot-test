@@ -17,6 +17,7 @@ export function expireHolds(){
  db.prepare("UPDATE booking_slots SET status='expired' WHERE status='hold' AND hold_until<=?").run(new Date().toISOString());
 }
 export function assertBookingWindow(accountId:string,start:string,end:string,ignoreOrder=''){
+ if(db.prepare("SELECT 1 FROM manual_reset_jobs WHERE account_id=? AND status IN ('queued','running','retrying')").get(accountId))throw new Error('A password reset is in progress for this account');
  expireHolds();
  const conflict=db.prepare("SELECT 1 FROM booking_slots WHERE account_id=? AND order_id<>? AND status IN ('hold','reserved') AND starts_at<? AND ends_at>? LIMIT 1").get(accountId,ignoreOrder,end,start);
  if(conflict)throw new Error('This time overlaps an advance booking or pending extension');
@@ -28,7 +29,8 @@ export function availability(hours=1){
  const accounts=db.prepare(`SELECT a.id,a.name,a.sold,a.sold_until,s.status AS reset_status FROM accounts a LEFT JOIN auto_reset_schedule s ON s.account_id=a.id ORDER BY a.created_at`).all() as Array<{id:string;name:string;sold:number;sold_until:string|null;reset_status:string|null}>;
  return accounts.map(a=>{
   let next=now;
-  let uncertain=a.reset_status==='failed'||a.reset_status==='running';
+  let uncertain=a.reset_status==='failed'||a.reset_status==='running'
+    ||!!db.prepare("SELECT 1 FROM manual_reset_jobs WHERE account_id=? AND status IN ('queued','running','retrying')").get(a.id);
   const active=db.prepare("SELECT MAX(expires_at) AS ends FROM test_orders WHERE account_id=? AND status IN ('approved','delivered','delivery_failed','reset_failed') AND COALESCE(order_type,'booking')='booking'").get(a.id) as {ends:string|null};
   const end=a.sold_until||active.ends;
   if(a.sold||active.ends||a.reset_status==='pending'){

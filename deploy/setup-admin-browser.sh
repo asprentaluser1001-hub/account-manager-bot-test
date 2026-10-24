@@ -7,9 +7,11 @@ git diff --quiet
 git diff --cached --quiet
 systemctl is-active --quiet account-manager-test.service
 
-if ! command -v Xvfb >/dev/null || ! command -v xkbcomp >/dev/null; then
+if ! command -v Xvfb >/dev/null || ! command -v xkbcomp >/dev/null || ! command -v dbus-daemon >/dev/null \
+  || [[ ! -s /usr/share/glib-2.0/schemas/gschemas.compiled ]] \
+  || [[ ! -f /usr/share/glib-2.0/schemas/org.gnome.desktop.interface.gschema.xml ]]; then
   apt-get update
-  apt-get install -y --no-install-recommends xvfb x11-xkb-utils
+  apt-get install -y --no-install-recommends xvfb x11-xkb-utils dbus gsettings-desktop-schemas
 fi
 
 unit_dir=/etc/systemd/system/account-manager-test.service.d

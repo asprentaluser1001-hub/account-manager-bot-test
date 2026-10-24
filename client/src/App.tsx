@@ -12,6 +12,10 @@ import ManualExtension from './ManualExtension';
 import { usePreviewMode } from './usePreviewMode';
 import MiniApp from './MiniApp';
 
+interface ResetJob {
+  id:string;status:string;stage:string;attempts:number;nextAttemptAt:string|null;
+  newPassword?:string;error?:string|null;errorCode?:string|null;
+}
 interface Account {
   id: string;
   name: string;
@@ -24,6 +28,7 @@ interface Account {
   autoResetAt: string | null;
   autoResetStatus: string | null;
   reset_candidate_password?:string|null;
+  resetJob?:ResetJob|null;
 }
 
 interface HistoryEntry {
@@ -316,6 +321,8 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const hasLoadedAccounts = useRef(false);
+  const mounted=useRef(true);
+  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
   const [error, setError] = useState('');
   const [expandedHistory, setExpandedHistory] = useState<Record<string, boolean>>({});
   const [historyShown, setHistoryShown] = useState(5);
@@ -342,7 +349,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
 
   // per-account states
   const [resettingId, setResettingId] = useState<string | null>(null);
-  const [resetResult, setResetResult] = useState<Record<string, { ok: boolean; msg: string }>>({});
+  const [resetResult, setResetResult] = useState<Record<string, { ok: boolean; msg: string; pending?:boolean }>>({});
   const [autoOpenId, setAutoOpenId] = useState<string | null>(null);
   const [autoTime, setAutoTime] = useState('');
   const [soldOpenId, setSoldOpenId] = useState<string | null>(null);
@@ -378,6 +385,8 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
   }, [authHeaders, onLogout]);
 
   useEffect(() => { load(); const timer=setInterval(()=>{if(!document.hidden)load()},30000); return()=>clearInterval(timer); }, [load]);
+  const hasActiveResets=accounts.some(account=>!!account.resetJob);
+  useEffect(()=>{if(!hasActiveResets)return;const timer=setInterval(()=>{if(!document.hidden)load();},2000);return()=>clearInterval(timer);},[hasActiveResets,load]);
 
   useEffect(()=>{
     if(!('serviceWorker' in navigator)||!('PushManager' in window)||!('Notification' in window)){setPushState('unsupported');return;}
@@ -437,17 +446,42 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
     }
   }
 
-  async function unsell(id: string) {
+  async function runManualReset(id:string,action:'reset-password'|'release') {
+    setResettingId(id);
+    setResetResult(current=>{const next={...current};delete next[id];return next;});
+    let accepted=false;
     try {
-      const response = await fetch(`/api/accounts/${id}/release`, { method: 'POST', headers: authHeaders() });
-      const body = await response.json();
-      if (!response.ok) throw new Error(body.error || 'Could not release account');
-      setResetResult((current) => ({ ...current, [id]: { ok: true, msg: 'Released and password reset.' } }));
+      const response=await fetch(`/api/accounts/${id}/${action}`,{method:'POST',headers:authHeaders()});
+      const data=await response.json();
+      if(!response.ok)throw new Error(data.error||'Could not queue reset');
+      let job:ResetJob=data.job;
+      accepted=true;
+      setAccounts(current=>current.map(account=>account.id===id?{...account,resetJob:job}:account));
+      while(['queued','running','retrying'].includes(job.status)) {
+        if(!mounted.current)return;
+        const wait=job.nextAttemptAt?` · Next try ${new Date(job.nextAttemptAt).toLocaleTimeString()}`:'';
+        setResetResult(current=>({...current,[id]:{ok:false,pending:true,msg:job.stage+wait}}));
+        await new Promise(resolve=>setTimeout(resolve,2000));
+        if(!mounted.current)return;
+        const status=await fetch(`/api/accounts/${id}/reset-jobs/${job.id}`,{headers:authHeaders(),cache:'no-store'});
+        const update=await status.json();
+        if(!status.ok)throw new Error(update.error||'Could not check reset progress');
+        job=update.job;
+      }
+      if(!mounted.current)return;
+      setResetResult(current=>({...current,[id]:{ok:job.status==='succeeded',msg:job.status==='succeeded'
+        ?action==='release'?'Released; new password verified.':`New password: ${job.newPassword}`
+        :job.error||job.stage}}));
       await load();
-    } catch (err) {
-      setResetResult((current) => ({ ...current, [id]: { ok: false, msg: err instanceof Error ? err.message : 'Could not release account' } }));
-    }
+    } catch(error) {
+      if(!mounted.current)return;
+      setResetResult(current=>({...current,[id]:{ok:false,pending:accepted,msg:accepted
+        ?'Reset continues on the server. Refresh to check its progress.'
+        :error instanceof Error?error.message:'Could not queue reset'}}));
+      await load();
+    } finally {if(mounted.current)setResettingId(current=>current===id?null:current);}
   }
+  async function unsell(id:string){await runManualReset(id,'release');}
 
   async function deleteAccount(id: string) {
     const account=accounts.find(a=>a.id===id);
@@ -462,19 +496,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
     }
   }
 
-  async function resetPassword(id: string) {
-    setResettingId(id);
-    setResetResult((r) => { const c = { ...r }; delete c[id]; return c; });
-    try {
-      const res = await fetch(`/api/accounts/${id}/reset-password`, { method: 'POST', headers: authHeaders() });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Reset failed');
-      setResetResult((r) => ({ ...r, [id]: { ok: true, msg: `New password: ${data.newPassword}` } }));
-      await load();
-    } catch (err) {
-      setResetResult((r) => ({ ...r, [id]: { ok: false, msg: err instanceof Error ? err.message : 'Reset failed' } }));
-    } finally { setResettingId(null); }
-  }
+  async function resetPassword(id:string){await runManualReset(id,'reset-password');}
 
   async function scheduleAutoReset(id: string) {
     if (!autoTime) { setError('Pick a time first'); return; }
@@ -748,10 +770,12 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
 
                       {/* Reset result */}
                       {resetResult[acc.id] && (
-                        <p className={`font-body text-xs mt-2 rounded-lg px-2.5 py-1.5 ${resetResult[acc.id].ok ? 'text-emerald-700 bg-emerald-50 border border-emerald-200' : 'text-red-600 bg-red-50 border border-red-200'}`}>
-                          {resetResult[acc.id].ok ? '✓ ' : '✗ '}{resetResult[acc.id].msg}
+                        <p className={`font-body text-xs mt-2 rounded-lg px-2.5 py-1.5 ${resetResult[acc.id].pending ? 'text-blue-700 bg-blue-50 border border-blue-200' : resetResult[acc.id].ok ? 'text-emerald-700 bg-emerald-50 border border-emerald-200' : 'text-red-600 bg-red-50 border border-red-200'}`}>
+                          {resetResult[acc.id].pending ? '◷ ' : resetResult[acc.id].ok ? '✓ ' : '✗ '}{resetResult[acc.id].msg}
                         </p>
                       )}
+
+                      {acc.resetJob&&!resetResult[acc.id]&&<p className="text-xs mt-2 rounded-lg px-2.5 py-1.5 text-blue-700 bg-blue-50 border border-blue-200">◷ {acc.resetJob.stage}{acc.resetJob.nextAttemptAt?` · Next try ${new Date(acc.resetJob.nextAttemptAt).toLocaleTimeString()}`:''}</p>}
 
                       {/* Auto-reset time picker */}
                       {autoOpenId === acc.id && (
@@ -769,12 +793,12 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
                       {/* Action row — both buttons stay side by side */}
                       <div className="flex items-center gap-2 flex-nowrap">
                         <button
-                          onClick={() => resetPassword(acc.id)}
-                          disabled={resettingId === acc.id}
+                          onClick={() => acc.sold?unsell(acc.id):resetPassword(acc.id)}
+                          disabled={resettingId === acc.id||!!acc.resetJob}
                           className="inline-flex items-center justify-center gap-2 flex-1 px-3 py-2.5 text-sm font-semibold text-white bg-slate-900 rounded-xl hover:bg-slate-800 active:scale-[0.98] transition disabled:opacity-50 whitespace-nowrap"
                         >
                           <Icon path={ICONS.key} className="w-4 h-4 shrink-0" />
-                          {resettingId === acc.id ? 'Resetting…' : 'Reset password'}
+                          {resettingId === acc.id||acc.resetJob ? 'Reset in progress…' : acc.sold?'Release & reset':'Reset password'}
                         </button>
 
                         {/* Auto reset button */}
@@ -797,6 +821,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
                         {acc.sold ? (
                           <button
                             onClick={() => unsell(acc.id)}
+                            disabled={resettingId===acc.id||!!acc.resetJob}
                             className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-red-600 transition-colors"
                           >
                             <Icon path={ICONS.x} className="w-3.5 h-3.5" /> Release & reset now
