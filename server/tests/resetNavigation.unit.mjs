@@ -2,9 +2,29 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url);
-const {findResetAccount,openResetLogin,openVerificationLogin,ResetNavigationError}=require('../dist/lib/resetNavigation.js');
+const {findResetAccount,openResetLogin,openVerificationLogin,ResetNavigationError,checkResetPage}=require('../dist/lib/resetNavigation.js');
 const invisible=()=>({all:async()=>[]});
 const visible=()=>({all:async()=>[{isVisible:async()=>true,click:async()=>{}}]});
+
+test('HTTP 403 is rejected immediately without searching for a login form',async()=>{
+ await assert.rejects(()=>checkResetPage({},403),error=>{
+  assert.equal(error.kind,'challenge');return true;
+ });
+});
+
+test('a Just a moment challenge is recognized even with HTTP 200',async()=>{
+ const page={title:async()=> 'Just a moment...'};
+ await assert.rejects(()=>checkResetPage(page,200),error=>{
+  assert.equal(error.kind,'challenge');return true;
+ });
+});
+
+test('a server error remains transient rather than reporting missing login controls',async()=>{
+ const page={title:async()=> 'Unavailable',getByText:()=>invisible()};
+ await assert.rejects(()=>checkResetPage(page,503),error=>{
+  assert.equal(error.kind,'transient');assert.match(error.message,/HTTP 503/);return true;
+ });
+});
 
 test('unknown login state is transient and does not reveal page contents',async()=>{
  const page={locator:()=>invisible(),getByRole:()=>invisible(),getByText:()=>invisible(),title:async()=>'',waitForTimeout:async()=>new Promise(r=>setTimeout(r,1))};

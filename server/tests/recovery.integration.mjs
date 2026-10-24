@@ -75,14 +75,14 @@ test('a verification security challenge preserves both passwords and requires re
  let launches=0;
  chromium.launchPersistentContext=async()=>{
   const verifying=++launches===2;
-  const page={setDefaultTimeout(){},setDefaultNavigationTimeout(){},url:()=> 'https://flingster.com/?private=test-only',title:async()=> 'Verification required',goto:async()=>({status:()=>verifying?403:200}),click:async()=>{},fill:async()=>{},waitForTimeout:async()=>{},waitForFunction:async()=>{},locator:(selector)=>({all:async()=>{if(verifying&&selector==='.mw-user.red-lnk')throw new Error('New credentials could not be verified');return [{isVisible:async()=>true,click:async()=>{}}];}}),waitForSelector:async()=>{if(verifying)throw new Error('New credentials could not be verified');}};
+  const page={setDefaultTimeout(){},setDefaultNavigationTimeout(){},url:()=> 'https://flingster.com/?private=test-only',getByText:()=>({all:async()=>[]}),title:async()=> verifying ? 'Verification required' : 'Flingster',goto:async()=>({status:()=>verifying?403:200}),click:async()=>{},fill:async()=>{},waitForTimeout:async()=>{},waitForFunction:async()=>{},locator:(selector)=>({all:async()=>{if(verifying&&selector==='.mw-user.red-lnk')throw new Error('New credentials could not be verified');return [{isVisible:async()=>true,click:async()=>{}}];}}),waitForSelector:async()=>{if(verifying)throw new Error('New credentials could not be verified');}};
   return {pages:()=>[page],close:async()=>{}};
  };
  try{
   const result=await require('../dist/lib/passwordReset.js').resetAccountPassword('last');
   assert.equal(result.success,false);
   assert.equal(result.retryable,false,'a security challenge must not be retried automatically');
-  assert.match(result.error,/confirming verified account login/);
+  assert.match(result.error,/loading verification login page/);
   assert.match(result.error,/HTTP: 403/);
   assert.match(result.error,/Verification required/);
   assert.ok(!result.error.includes('private=test-only'));
@@ -104,7 +104,7 @@ test('fresh verification reuses browser settings without sharing a login profile
     assert.deepEqual(options[key],launches[0].options[key],`verification changed ${key}`);
    }
   }
-  const page={setDefaultTimeout(){},setDefaultNavigationTimeout(){},goto:async()=>{},click:async()=>{},fill:async()=>{},waitForTimeout:async()=>{},waitForFunction:async()=>{},waitForSelector:async()=>{},locator:()=>({all:async()=>[{isVisible:async()=>true,click:async()=>{}}]})};
+  const page={title:async()=> 'Flingster',getByText:()=>({all:async()=>[]}),setDefaultTimeout(){},setDefaultNavigationTimeout(){},goto:async()=>{},click:async()=>{},fill:async()=>{},waitForTimeout:async()=>{},waitForFunction:async()=>{},waitForSelector:async()=>{},locator:()=>({all:async()=>[{isVisible:async()=>true,click:async()=>{}}]})};
   return {pages:()=>[page],close:async()=>{}};
  };
  try{

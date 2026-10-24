@@ -19,6 +19,7 @@ data.db-shm
 .DS_Store
 *.log
 *.tsbuildinfo
+.reset-hotfix-backups/
 
 # Sandbox databases and temporary SQLite files
 *.db

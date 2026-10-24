@@ -12,7 +12,7 @@ process.env.V3_PREVIEW = 'false';
 process.env.TELEGRAM_BOT_TOKEN = '';
 const { db } = require('../dist/db.js');
 const { runResetJob, withResetStopped } = require('../dist/lib/resetJobs.js');
-const { chromium } = require('playwright');
+const { chromium, errors } = require('playwright');
 const { resetAccountPassword } = require('../dist/lib/passwordReset.js');
 require('../dist/lib/v3Features.js'); // Apply the same booking migrations as server startup.
 after(() => { db.close(); rmSync(dir, { recursive: true, force: true }); });
@@ -50,20 +50,29 @@ function account(id) { return db.prepare('SELECT * FROM accounts WHERE id=?').ge
 
 // The browser model changes its external password only when submission completes.
 // Authenticated selectors reject invalid credentials, including in a fresh profile.
-function fakeBrowser(initialPassword, { failVerification = false, submissionTimeout = false, navigationError = null } = {}) {
+function fakeBrowser(initialPassword, { failVerification = false, submissionTimeout = false, navigationError = null,
+  initialStatus = 200, verificationStatus = 200, verificationTitle = 'Flingster', deferSubmission = false, submissionError = null } = {}) {
   let external = initialPassword, launches = 0, submissions = 0;
-  const logins = [], events = [];
+  let pending;
+  const logins = [], events = [], contexts = [];
   return {
-    logins, events,
+    logins, events, contexts,
     get external() { return external; },
     get submissions() { return submissions; },
     launch: async () => {
       const launch = ++launches;
+      if (pending) {
+        assert.equal(contexts[0].closed, false, 'pending submission must survive verification startup');
+        external = pending;
+        pending = null;
+      }
       const fields = {};
       let loggedIn = false, submitted = false;
       const page = {
         setDefaultTimeout() {}, setDefaultNavigationTimeout() {},
-        goto: async () => {},
+        goto: async () => ({ status: () => launch === 1 ? initialStatus : verificationStatus }),
+        title: async () => launch === 1 ? 'Flingster' : verificationTitle,
+        getByText: () => ({ all: async () => [] }),
         fill: async (s, v) => { fields[s] = v; },
         click: async s => {
           if (s === 'button.rlt-login') {
@@ -72,9 +81,11 @@ function fakeBrowser(initialPassword, { failVerification = false, submissionTime
           }
           if (s === 'button.rlt-change-pass') {
             assert.equal(loggedIn, true);
-            external = fields['#chng-new-pass'];
+            const candidate = fields['#chng-new-pass'];
+            if (deferSubmission) pending = candidate;
+            else external = candidate;
             submissions++; submitted = true;
-            assert.equal(db.prepare('SELECT reset_candidate_password FROM accounts WHERE email=?').get(fields['#user-email']).reset_candidate_password, external);
+            assert.equal(db.prepare('SELECT reset_candidate_password FROM accounts WHERE email=?').get(fields['#user-email']).reset_candidate_password, candidate);
           }
         },
         locator: () => ({ isVisible: async () => loggedIn, click: async () => {} }),
@@ -88,10 +99,13 @@ function fakeBrowser(initialPassword, { failVerification = false, submissionTime
         waitForFunction: async () => {
           assert.equal(submitted, true);
           events.push('submission-complete');
-          if (submissionTimeout) throw new Error('Submission confirmation timed out');
+          if (submissionError) throw submissionError;
+          if (submissionTimeout) throw new errors.TimeoutError('Submission confirmation timed out');
         },
       };
-      return { pages: () => [page], close: async () => {} };
+      const context = { closed: false, pages: () => [page], close: async () => { context.closed = true; } };
+      contexts.push(context);
+      return context;
     },
   };
 }
@@ -156,14 +170,79 @@ test('failed candidate and old-password checks preserve the recovery credential'
   assert.equal(account('unknown').reset_candidate_password, 'saved-candidate');
 });
 
-test('a submission timeout retains the proposed password for the next automatic attempt', async () => {
+test('an unchanged form verifies the candidate in the same attempt without another submission', async () => {
   addAccount('submission-timeout');
   const first = fakeBrowser('old-password', { submissionTimeout: true });
-  const failed = await withBrowser(first, () => resetAccountPassword('submission-timeout'));
-  assert.equal(failed.success, false);
-  assert.equal(account('submission-timeout').reset_candidate_password, first.external);
-  const next = fakeBrowser(first.external);
-  assert.equal((await withBrowser(next, () => resetAccountPassword('submission-timeout'))).success, true);
+  const result = await withBrowser(first, () => resetAccountPassword('submission-timeout'));
+  assert.equal(result.success, true, result.error);
+  assert.equal(first.submissions, 1);
+  assert.deepEqual(first.logins, ['old-password', first.external]);
+  assert.equal(account('submission-timeout').password, first.external);
+  assert.equal(account('submission-timeout').reset_candidate_password, null);
+  assert.ok(first.contexts.every(c => c.closed));
+});
+
+test('a slow submission remains alive during same-attempt verification', async () => {
+  addAccount('slow-submit');
+  const fake = fakeBrowser('old-password', { submissionTimeout: true, deferSubmission: true });
+  const result = await withBrowser(fake, () => resetAccountPassword('slow-submit'));
+  assert.equal(result.success, true, result.error);
+  assert.equal(fake.submissions, 1);
+  assert.ok(fake.contexts.every(c => c.closed));
+});
+
+test('unverified candidate survives a submission UI timeout followed by verification failure', async () => {
+  addAccount('uncertain-submit');
+  const fake = fakeBrowser('old-password', { submissionTimeout: true, failVerification: true });
+  const result = await withBrowser(fake, () => resetAccountPassword('uncertain-submit'));
+  assert.equal(result.success, false);
+  assert.equal(account('uncertain-submit').password, 'old-password');
+  assert.equal(account('uncertain-submit').reset_candidate_password, fake.external);
+  assert.ok(fake.contexts.every(c => c.closed));
+});
+
+test('non-timeout submission errors do not start same-attempt verification', async () => {
+  addAccount('broken-submit');
+  const fake = fakeBrowser('old-password', { submissionError: new Error('Browser disconnected') });
+  const result = await withBrowser(fake, () => resetAccountPassword('broken-submit'));
+  assert.equal(result.success, false);
+  assert.match(result.error, /Browser disconnected/);
+  assert.equal(fake.contexts.length, 1);
+  assert.equal(account('broken-submit').reset_candidate_password, fake.external);
+});
+
+test('initial HTTP 403 stops before login or submission', async () => {
+  addAccount('blocked-initial');
+  const fake = fakeBrowser('old-password', { initialStatus: 403 });
+  const result = await withBrowser(fake, () => resetAccountPassword('blocked-initial'));
+  assert.equal(result.success, false);
+  assert.equal(result.retryable, false);
+  assert.match(result.error, /HTTP: 403/);
+  assert.deepEqual(fake.logins, []);
+  assert.equal(fake.submissions, 0);
+});
+
+test('HTTP 403 on candidate recovery preserves it without trying the old password', async () => {
+  addAccount('blocked-candidate', 'saved-candidate');
+  const fake = fakeBrowser('old-password', { initialStatus: 403 });
+  const result = await withBrowser(fake, () => resetAccountPassword('blocked-candidate'));
+  assert.equal(result.retryable, false);
+  assert.deepEqual(fake.logins, []);
+  assert.equal(account('blocked-candidate').reset_candidate_password, 'saved-candidate');
+});
+
+for (const status of [200, 403]) test(`verification challenge (${status}) preserves the candidate after UI timeout`, async () => {
+  const id = 'blocked-verification-' + status;
+  addAccount(id);
+  const fake = fakeBrowser('old-password', { submissionTimeout: true, verificationStatus: status, verificationTitle: 'Just a moment...' });
+  const result = await withBrowser(fake, () => resetAccountPassword(id));
+  assert.equal(result.success, false);
+  assert.equal(result.retryable, false);
+  assert.equal(fake.submissions, 1);
+  assert.deepEqual(fake.logins, ['old-password']);
+  assert.equal(account(id).password, 'old-password');
+  assert.equal(account(id).reset_candidate_password, fake.external);
+  assert.ok(fake.contexts.every(c => c.closed));
 });
 
 test('scheduled resets run even when booking-end notifications never settle', async () => {

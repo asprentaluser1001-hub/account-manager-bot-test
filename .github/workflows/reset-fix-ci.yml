@@ -1,12 +1,14 @@
-name: FlingRoulette v5.9.2 verification validation
+name: FlingRoulette reset verification validation
 
 on:
   push:
     branches:
       - 'fix/v5.9.2-faster-verification'
+      - 'fix/v5.9.2-same-attempt-verification'
   pull_request:
     branches:
       - 'release/v5.9.1'
+      - 'release/v5.9.2'
   workflow_dispatch:
 
 permissions:
@@ -37,8 +39,11 @@ jobs:
       - name: Build server
         run: npm run build
         working-directory: server
+      - name: Build SQLite native module
+        run: npm rebuild better-sqlite3
+        working-directory: server
       - name: Run isolated regression tests
-        run: node --test tests/resetNavigation.unit.mjs tests/recovery.integration.mjs
+        run: node --test tests/resetNavigation.unit.mjs tests/reset-navigation.unit.mjs tests/reset-regression.integration.mjs tests/recovery.integration.mjs tests/v5.integration.mjs
         working-directory: server
         env:
           TELEGRAM_BOT_TOKEN: ''

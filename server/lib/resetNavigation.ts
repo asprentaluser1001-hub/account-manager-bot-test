@@ -16,8 +16,19 @@ async function visible(locator: Locator): Promise<Locator | undefined> {
 async function challengeVisible(page: Page): Promise<boolean> {
   // Do not work around a CAPTCHA, access denial, or other security challenge.
   const title = await page.title().catch(() => '');
-  if (/captcha|verification required|security check|access denied/i.test(title)) return true;
+  if (/captcha|verification required|security check|access denied|just a moment/i.test(title)) return true;
   return !!(await visible(page.getByText(/captcha|verify you are human|security check/i)));
+}
+
+// Check navigation before searching for a form. A blocked page is not a slow
+// login control, and an HTTP 200 response can still contain a challenge.
+export async function checkResetPage(page: Page, status?: number): Promise<void> {
+  if (status === 401 || status === 403 || await challengeVisible(page)) {
+    throw new ResetNavigationError('Site access blocked or verification challenge detected; manual review required', 'challenge');
+  }
+  if (status !== undefined && status >= 400) {
+    throw new ResetNavigationError(`Site page returned HTTP ${status}`);
+  }
 }
 
 function isTimeout(error: unknown): boolean {
@@ -80,9 +91,7 @@ export async function openVerificationLogin(page: Page, signal: AbortSignal, sit
   signal.throwIfAborted();
   console.log('[PasswordReset] Verification login form unavailable; reloading verification page once');
   const response = await page.goto(siteUrl, { waitUntil: 'domcontentloaded', timeout: 20_000 });
-  if (response && response.status() >= 400) {
-      throw new ResetNavigationError('Verification page returned an error', [401,403].includes(response.status()) ? 'challenge' : 'transient');
-  }
+  await checkResetPage(page, response?.status());
   await openResetLogin(page, signal, reloadTimeout);
 }
 
