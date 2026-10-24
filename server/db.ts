@@ -61,6 +61,28 @@ db.exec(`
   );
 `);
 
+// Manual requests are durable jobs, independent of a booking's expiry timer.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS manual_reset_jobs (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    status TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    stage TEXT NOT NULL,
+    error TEXT,
+    error_code TEXT,
+    new_password TEXT,
+    next_attempt_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    finished_at TEXT
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS one_active_manual_reset
+    ON manual_reset_jobs(account_id) WHERE status IN ('queued','running','retrying');
+  CREATE INDEX IF NOT EXISTS manual_resets_due ON manual_reset_jobs(status,next_attempt_at);
+`);
+
 // ── Lightweight migration for existing DBs (add missing columns) ──
 try {
   const cols = db.prepare(`PRAGMA table_info(accounts)`).all() as Array<{ name: string }>;

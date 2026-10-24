@@ -67,7 +67,9 @@ async function processSchedule(row: AutoResetRow): Promise<void> {
   running.set(accountId,controller);
 
   // Mark running so we don't pick it up again
-  const claimed=db.prepare("UPDATE auto_reset_schedule SET status='running' WHERE account_id=? AND status='pending' AND run_at=? AND run_at<=?").run(accountId,row.run_at,new Date().toISOString());
+  const claimed=db.prepare(`UPDATE auto_reset_schedule SET status='running' WHERE account_id=? AND status='pending' AND run_at=? AND run_at<=?
+    AND NOT EXISTS (SELECT 1 FROM manual_reset_jobs m WHERE m.account_id=auto_reset_schedule.account_id AND m.status IN ('queued','running','retrying'))`)
+    .run(accountId,row.run_at,new Date().toISOString());
   if(!claimed.changes){running.delete(accountId);return;}
 
   const acc = db.prepare('SELECT name FROM accounts WHERE id = ?').get(accountId) as { name: string } | undefined;
@@ -136,7 +138,9 @@ function tick(): void {
     sendExpiryReminder(order).then(sent=>{if(sent)db.prepare('UPDATE test_orders SET reminder_notified_at=? WHERE id=? AND expires_at=? AND reminder_notified_at IS NULL').run(new Date().toISOString(),order.id,order.expires_at)}).catch(e=>log(`reminder failed: ${e}`)).finally(()=>reminderInFlight.delete(order.id));
   }
   const due = db
-    .prepare(`SELECT account_id, run_at, status, created_at FROM auto_reset_schedule WHERE status = 'pending' AND run_at <= ? ORDER BY run_at, account_id`)
+    .prepare(`SELECT account_id, run_at, status, created_at FROM auto_reset_schedule WHERE status = 'pending' AND run_at <= ?
+      AND NOT EXISTS (SELECT 1 FROM manual_reset_jobs m WHERE m.account_id=auto_reset_schedule.account_id AND m.status IN ('queued','running','retrying'))
+      ORDER BY run_at, account_id`)
     .all(now) as AutoResetRow[];
 
   for (const row of due) {
@@ -159,6 +163,7 @@ export function stopAutoResetScheduler(): void {
     clearInterval(interval);
     interval = null;
   }
+  for(const controller of running.values())controller.abort(new Error('Scheduler stopping'));
 }
 
 

@@ -71,13 +71,13 @@ test('reset jobs reject duplicates and cancellation finishes before recovery',as
 
 test('a verification security challenge preserves both passwords and requires review',async()=>{
  const {chromium}=require('playwright');
- const original=chromium.launchPersistentContext;
+ const original=chromium.launch;
  let launches=0;
- chromium.launchPersistentContext=async()=>{
+ chromium.launch=async()=>({close:async()=>{},newContext:async()=>{
   const verifying=++launches===2;
   const page={setDefaultTimeout(){},setDefaultNavigationTimeout(){},url:()=> 'https://flingster.com/?private=test-only',getByText:()=>({all:async()=>[]}),title:async()=> verifying ? 'Verification required' : 'Flingster',goto:async()=>({status:()=>verifying?403:200}),click:async()=>{},fill:async()=>{},waitForTimeout:async()=>{},waitForFunction:async()=>{},locator:(selector)=>({all:async()=>{if(verifying&&selector==='.mw-user.red-lnk')throw new Error('New credentials could not be verified');return [{isVisible:async()=>true,click:async()=>{}}];}}),waitForSelector:async()=>{if(verifying)throw new Error('New credentials could not be verified');}};
   return {pages:()=>[page],close:async()=>{}};
- };
+ }});
  try{
   const result=await require('../dist/lib/passwordReset.js').resetAccountPassword('last');
   assert.equal(result.success,false);
@@ -88,32 +88,34 @@ test('a verification security challenge preserves both passwords and requires re
   assert.ok(!result.error.includes('private=test-only'));
   const account=db.prepare('SELECT password,reset_candidate_password,last_reset_at FROM accounts WHERE id=?').get('last');
   assert.equal(account.password,'test-only');assert.match(account.reset_candidate_password,/^[a-z]{3}\d{3}$/);assert.equal(account.last_reset_at,null);
- }finally{chromium.launchPersistentContext=original;}
+ }finally{chromium.launch=original;}
 });
 
-test('fresh verification reuses browser settings without sharing a login profile',async()=>{
+test('fresh verification reuses one browser without sharing a login context',async()=>{
  const {chromium}=require('playwright');
- const original=chromium.launchPersistentContext;
+ const original=chromium.launch;
  const launches=[];
  db.prepare('INSERT INTO accounts(id,name,email,password,created_at) VALUES (?,?,?,?,?)').run('consistent','Test consistency','consistent@example.invalid','old-test-password',new Date().toISOString());
- chromium.launchPersistentContext=async(profile,options)=>{
+ let engines=0;
+ chromium.launch=async()=>{engines++;return {close:async()=>{},newContext:async(options)=>{
+  const profile={};
   launches.push({profile,options});
   if(launches.length===2){
-   assert.notEqual(profile,launches[0].profile,'verification must use a fresh profile');
+   assert.notEqual(profile,launches[0].profile,'verification must use a fresh context');
    for(const key of ['userAgent','viewport','locale','timezoneId']){
     assert.deepEqual(options[key],launches[0].options[key],`verification changed ${key}`);
    }
   }
   const page={title:async()=> 'Flingster',getByText:()=>({all:async()=>[]}),setDefaultTimeout(){},setDefaultNavigationTimeout(){},goto:async()=>{},click:async()=>{},fill:async()=>{},waitForTimeout:async()=>{},waitForFunction:async()=>{},waitForSelector:async()=>{},locator:()=>({all:async()=>[{isVisible:async()=>true,click:async()=>{}}]})};
   return {pages:()=>[page],close:async()=>{}};
- };
+ }}};
  try{
   const result=await require('../dist/lib/passwordReset.js').resetAccountPassword('consistent');
   assert.equal(result.success,true,result.error);
-  assert.equal(launches.length,2);
+  assert.equal(launches.length,2);assert.equal(engines,1);
   const saved=db.prepare('SELECT password,reset_candidate_password,last_reset_at FROM accounts WHERE id=?').get('consistent');
   assert.equal(saved.password,result.newPassword);assert.equal(saved.reset_candidate_password,null);assert.ok(saved.last_reset_at);
- }finally{chromium.launchPersistentContext=original;}
+ }finally{chromium.launch=original;}
 });
 
 test('scheduler cancellation aborts a running reset job',async()=>{
@@ -177,7 +179,15 @@ test('admin HTTP recovery can quarantine, retry and retire without losing histor
   assert.equal((await call('/api/accounts/sample-1/recovery','POST',{action:'retry',password:''},token)).status,400);
   assert.equal((await call('/api/accounts/sample-1/recovery','POST',{action:'retry',password:'recovered-test-password'},token)).status,200);
   assert.equal(sql.prepare("SELECT status FROM auto_reset_schedule WHERE account_id='sample-1'").get().status,'pending');
-  assert.equal((await call('/api/accounts/sample-1/release','POST',{},token)).status,200);
+  const release=await call('/api/accounts/sample-1/release','POST',{},token);
+  assert.equal(release.status,202);
+  let released;
+  for(let i=0;i<80;i++){
+   released=await call('/api/accounts/sample-1/reset-jobs/'+release.data.job.id,'GET',undefined,token);
+   if(released.data.job.status==='succeeded')break;
+   await new Promise(r=>setTimeout(r,25));
+  }
+  assert.equal(released.data.job.status,'succeeded');
   assert.equal(sql.prepare('SELECT status FROM test_orders WHERE id=?').get(booking.id).status,'expired');
   assert.ok((await call('/api/test-orders','GET',undefined,token)).data.available.some(a=>a.id==='sample-1'));
   const retired=(await call('/api/test-orders/manual','POST',{name:'Retired Customer',contact:'',hours:1,amount:100,accountId:'sample-2'},token)).data.order;

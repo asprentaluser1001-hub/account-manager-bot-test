@@ -3,13 +3,10 @@ import { Router, Request, Response } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { db, AccountRow, ResetHistoryRow, AutoResetRow } from '../db';
 import { adminAuth } from '../auth';
-import { resetAccountPassword } from '../lib/passwordReset';
-import { logResetHistory } from '../lib/history';
 import { blockCustomerForAccount, markReset } from '../lib/testOrders';
-import {stopScheduledReset} from '../lib/autoResetScheduler';
-import {withResetStopped} from '../lib/resetJobs';
 import {recordAccountRecovery} from '../lib/v3Features';
 import {sendCustomerResetFailure} from '../lib/telegramBot';
+import {queueManualReset,getManualResetJob,publicManualResetJob,activeManualResetJobs,withManualResetRecovery,ManualResetRequestError} from '../lib/manualResetJobs';
 
 /**
  * Account routes. All protected by adminAuth.
@@ -42,6 +39,7 @@ function expireSold() {
     `UPDATE accounts SET sold = 0, sold_until = NULL
      WHERE sold = 1 AND sold_until IS NOT NULL AND sold_until <= ?
        AND NOT EXISTS (SELECT 1 FROM auto_reset_schedule s WHERE s.account_id = accounts.id AND s.status IN ('pending','running','failed'))
+       AND NOT EXISTS (SELECT 1 FROM manual_reset_jobs m WHERE m.account_id=accounts.id AND m.status IN ('queued','running','retrying'))
        AND NOT EXISTS (SELECT 1 FROM test_orders o WHERE o.account_id = accounts.id AND o.status IN ('approved','delivered','delivery_failed','reset_failed'))`
   ).run(now);
 }
@@ -52,12 +50,14 @@ function withSchedule(rows: AccountRow[]) {
     .prepare(`SELECT account_id, run_at, status FROM auto_reset_schedule WHERE status IN ('pending','running','failed')`)
     .all() as AutoResetRow[];
   const map = new Map(schedules.map((s) => [s.account_id, s]));
+  const manualJobs=new Map(activeManualResetJobs().map(job=>[job.account_id,publicManualResetJob(job)]));
   return rows.map((r) => ({
     ...r,
     sold: !!r.sold,
     soldUntil: r.sold_until ?? null,
     autoResetAt: map.get(r.id)?.run_at ?? null,
     autoResetStatus: map.get(r.id)?.status ?? null,
+    resetJob:manualJobs.get(r.id)??null,
   }));
 }
 
@@ -104,6 +104,7 @@ accountsRouter.patch('/:id', (req: Request, res: Response) => {
 
   const existing = db.prepare('SELECT * FROM accounts WHERE id = ?').get(id) as AccountRow | undefined;
   if (!existing) return res.status(404).json({ error: 'Account not found' });
+  if(db.prepare("SELECT 1 FROM manual_reset_jobs WHERE account_id=? AND status IN ('queued','running','retrying')").get(id))return res.status(409).json({error:'Stop the current reset through account recovery before editing this account.'});
   if (existing.sold && typeof password === 'string' && password.trim() && password.trim() !== existing.password) return res.status(409).json({error:'End the active booking before changing this account password.'});
 
   if (process.env.SANDBOX_MODE === 'true' && ((email && !String(email).endsWith('@example.invalid')) || (name && !String(name).startsWith('Sample')))) return res.status(400).json({error:'Only sample accounts can be edited in this sandbox.'});
@@ -125,6 +126,7 @@ accountsRouter.patch('/:id/sold', (req: Request, res: Response) => {
   const existing = db.prepare('SELECT id FROM accounts WHERE id = ?').get(id);
   if (!existing) return res.status(404).json({ error: 'Account not found' });
 
+  if(db.prepare("SELECT 1 FROM manual_reset_jobs WHERE account_id=? AND status IN ('queued','running','retrying')").get(id))return res.status(409).json({error:'A password reset is in progress.'});
   if (process.env.SANDBOX_MODE === 'true') return res.status(403).json({error:'Use test orders to reserve sample accounts.'});
   if (sold) {
     const h = Number(hours);
@@ -143,32 +145,17 @@ accountsRouter.patch('/:id/sold', (req: Request, res: Response) => {
 
 // End an active booking early. The account stays reserved until its password
 // has reset successfully, so it can never be re-used with old credentials.
-accountsRouter.post('/:id/release', async (req: Request, res: Response) => {
- try {
-  const { id } = req.params;
-  const account = db.prepare('SELECT name FROM accounts WHERE id = ?').get(id) as { name: string } | undefined;
-  if (!account) return res.status(404).json({ error: 'Account not found' });
+function requestReset(req:Request,res:Response,action:'reset'|'release') {
+ try{return res.set('Cache-Control','no-store').status(202).json({job:publicManualResetJob(queueManualReset(req.params.id,action))});}
+ catch(error){return res.status(error instanceof ManualResetRequestError?error.status:500)
+   .json({error:error instanceof ManualResetRequestError?error.message:'Could not queue the reset'});}
+}
+accountsRouter.post('/:id/release',(req:Request,res:Response)=>requestReset(req,res,'release'));
 
-  stopScheduledReset(id);
-  await withResetStopped(id,()=>{});
-  const result = await resetAccountPassword(id);
-  logResetHistory({
-    accountId: id,
-    accountName: account.name,
-    success: result.success,
-    newPassword: result.newPassword,
-    error: result.error,
-    source: 'manual',
-  });
-
-  if (!result.success) {markReset(id,false,result.error);await sendCustomerResetFailure(id).catch(()=>false);return res.status(500).json({ error: result.error || 'Password reset failed. Account remains reserved.' });}
-
-  // A completed manual release replaces the pending expiry reset.
-  db.prepare('DELETE FROM auto_reset_schedule WHERE account_id = ?').run(id);
-  markReset(id, true);
-  db.prepare('UPDATE accounts SET sold = 0, sold_until = NULL WHERE id = ?').run(id);
-  return res.json({ ok: true, sold: false, newPassword: result.newPassword });
- }catch(e){return res.status(409).json({error:e instanceof Error?e.message:'Account release failed'});}
+accountsRouter.get('/:id/reset-jobs/:jobId',(req:Request,res:Response)=>{
+ const job=getManualResetJob(req.params.jobId);
+ if(!job||job.account_id!==req.params.id)return res.status(404).json({error:'Reset job not found'});
+ return res.set('Cache-Control','no-store').json({job:publicManualResetJob(job)});
 });
 
 // Recovery does not claim to recover a forgotten external-site password.
@@ -182,8 +169,7 @@ accountsRouter.post('/:id/recovery',async(req:Request,res:Response)=>{
  const password=req.body?.password;
  if((action==='retry'||action==='save')&&(typeof password!=='string'||!password.trim()||password.length>256))return res.status(400).json({error:'Enter the current password recovered from the external site'});
  try{
-  stopScheduledReset(id);
-  const result=await withResetStopped(id,()=>db.transaction(()=>{
+  const result=await withManualResetRecovery(id,()=>db.transaction(()=>{
    const now=new Date().toISOString();
    if(action==='stop'||action==='retry'||action==='save')blockCustomerForAccount(id,'Account recovery requires admin approval');
    if(action==='retire'){
@@ -220,31 +206,8 @@ accountsRouter.delete('/:id', (req: Request, res: Response) => {
   return res.json({ ok: true });
 });
 
-// Reset password now (headless Chromium). Logs to history either way.
-accountsRouter.post('/:id/reset-password', async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const reserved=db.prepare('SELECT sold FROM accounts WHERE id=?').get(id) as {sold:number}|undefined;
-  if(reserved?.sold)return res.status(409).json({error:'Use End booking or Release to reset a reserved account safely.'});
-  const acc = db.prepare('SELECT name FROM accounts WHERE id = ?').get(id) as { name: string } | undefined;
-  const result = await resetAccountPassword(id);
-
-  logResetHistory({
-    accountId: id,
-    accountName: acc?.name || 'Unknown',
-    success: result.success,
-    newPassword: result.newPassword,
-    error: result.error,
-    source: 'manual',
-  });
-
-  if (!result.success) {
-    blockCustomerForAccount(id,result.error||'Password reset failed');
-    db.prepare("UPDATE accounts SET sold=1 WHERE id=?").run(id);
-    db.prepare("INSERT INTO auto_reset_schedule(account_id,run_at,status,created_at) VALUES (?,?,'failed',?) ON CONFLICT(account_id) DO UPDATE SET status='failed'").run(id,new Date().toISOString(),new Date().toISOString());
-    return res.status(500).json({ error: result.error || 'Password reset failed. Account is blocked until recovery.' });
-  }
-  return res.json({ success: true, newPassword: result.newPassword });
-});
+// The request returns promptly; its durable worker is independent of the page.
+accountsRouter.post('/:id/reset-password',(req:Request,res:Response)=>requestReset(req,res,'reset'));
 
 // Schedule an auto reset at a specific time (ISO string in body: { runAt })
 accountsRouter.post('/:id/auto-reset', (req: Request, res: Response) => {
