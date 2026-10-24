@@ -1,12 +1,16 @@
-name: FlingRoulette v5.9.2 verification validation
+name: FlingRoulette reset verification validation
 
 on:
   push:
     branches:
       - 'fix/v5.9.2-faster-verification'
+      - 'fix/v5.9.2-same-attempt-verification'
+      - 'diagnostics/phone-vps-browser'
   pull_request:
     branches:
       - 'release/v5.9.1'
+      - 'release/v5.9.2'
+      - 'fix/v5.9.2-same-attempt-verification'
   workflow_dispatch:
 
 permissions:
@@ -37,9 +41,22 @@ jobs:
       - name: Build server
         run: npm run build
         working-directory: server
+      - name: Build SQLite native module
+        run: npm rebuild better-sqlite3
+        working-directory: server
       - name: Run isolated regression tests
-        run: node --test tests/resetNavigation.unit.mjs tests/recovery.integration.mjs
+        run: node --test tests/admin-browser.integration.cjs tests/site-access.unit.cjs tests/resetNavigation.unit.mjs tests/reset-navigation.unit.mjs tests/reset-regression.integration.mjs tests/recovery.integration.mjs tests/v5.integration.mjs
         working-directory: server
         env:
           TELEGRAM_BOT_TOKEN: ''
           IMB_API_TOKEN: ''
+      - name: Install browser fixture dependencies
+        run: |
+          npx playwright install --with-deps chromium
+          sudo apt-get install -y --no-install-recommends xvfb x11-xkb-utils
+        working-directory: server
+      - name: Run mobile UI and headed browser fixtures
+        run: |
+          node tests/admin-browser-ui.browser.cjs
+          node tests/admin-browser-display.browser.cjs
+        working-directory: server
