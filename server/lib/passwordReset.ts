@@ -32,17 +32,6 @@ const SEL_NEW_PASSWORD = '#chng-new-pass';
 const SEL_CONFIRM_PASSWORD = '#chng-new-pass-conf';
 const SEL_PASSWORD_SUBMIT = 'button.rlt-change-pass';
 
-const USER_AGENTS = [
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
-];
-const LOCALES = ['en-US', 'en-GB', 'en-IN'];
-const TIMEZONES = ['Asia/Kolkata', 'America/New_York', 'Europe/London'];
-
-function randomItem<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
-}
 /** New password: 3 lowercase letters + 3 digits, e.g. "xqr847". */
 function generatePassword(): string {
   const letters = 'abcdefghijklmnopqrstuvwxyz';
@@ -97,13 +86,13 @@ async function performReset(accountId:string,signal:AbortSignal):Promise<ResetRe
       headless: true,
       timeout: 20_000,
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
-      userAgent: randomItem(USER_AGENTS),
-      viewport: {
-        width: 1280 + Math.floor(Math.random() * 200) - 100,
-        height: 720 + Math.floor(Math.random() * 100) - 50,
-      },
-      locale: randomItem(LOCALES),
-      timezoneId: randomItem(TIMEZONES),
+      // Match the fixed application preset that reached visible login controls
+      // in the VPS landing-page diagnostic. Do not randomize it between jobs.
+      // This is not proof of authenticated access; challenge checks still apply.
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+      viewport: { width: 1280, height: 720 },
+      locale: 'en-US',
+      timezoneId: 'Asia/Kolkata',
     };
     // Verification can fail after the site has already changed the password.
     // Confirm that persisted candidate before trying the old stored credential.

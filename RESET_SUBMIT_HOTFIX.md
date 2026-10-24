@@ -67,3 +67,23 @@ proof that a login or reset will work. If both configurations remain challenged,
 access from the VPS is still unverified; use Flingster's official contact page
 at https://flingster.com/contact/ to ask about supported automated access.
 No official password-management API was established during this investigation.
+
+## Consistent browser preset
+
+The VPS diagnostic on 2026-10-24 returned a Cloudflare challenge for native
+defaults, while `application-preset-sample` returned HTTP 200 with visible login
+controls. Reset, verification, and persisted-candidate recovery now use that
+same fixed preset (Windows Chrome 125 presentation, 1280x720, en-US,
+Asia/Kolkata) across jobs instead of randomizing settings on every attempt.
+This is an existing application preset, not a new challenge-handling mechanism.
+
+The two checks were sequential and each ran once: timing or intermittent site
+behavior could also explain the difference. The observation establishes public
+landing-page access only. One authenticated reset on the VPS is still needed
+to validate the result; HTTP 403/challenges continue to stop for manual review.
+Fresh verification still has no shared authenticated cookies or storage.
+
+Install this update with the same backed-up deployment command in the deployment
+section, then try one expired account. If the current password was changed
+manually, save that verified current password through account recovery before
+queuing the test. The change does not modify stored credentials or the schema.

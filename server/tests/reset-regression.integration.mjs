@@ -54,12 +54,13 @@ function fakeBrowser(initialPassword, { failVerification = false, submissionTime
   initialStatus = 200, verificationStatus = 200, verificationTitle = 'Flingster', deferSubmission = false, submissionError = null } = {}) {
   let external = initialPassword, launches = 0, submissions = 0;
   let pending;
-  const logins = [], events = [], contexts = [];
+  const logins = [], events = [], contexts = [], launchOptions = [];
   return {
-    logins, events, contexts,
+    logins, events, contexts, launchOptions,
     get external() { return external; },
     get submissions() { return submissions; },
-    launch: async () => {
+    launch: async (_profile, options) => {
+      launchOptions.push(structuredClone(options));
       const launch = ++launches;
       if (pending) {
         assert.equal(contexts[0].closed, false, 'pending submission must survive verification startup');
@@ -132,6 +133,29 @@ test('normal reset waits for submission and verifies in a fresh profile before s
   assert.equal(account('normal').reset_candidate_password, null);
   assert.equal(fake.logins.length, 2);
   assert.ok(fake.events.includes('submission-complete'));
+});
+
+test('reset and candidate recovery keep the VPS-tested preset across jobs despite different random inputs', async () => {
+  addAccount('stable-settings');
+  const originalRandom = Math.random;
+  const runWithRandom = async (start, work) => {
+    let value = start;
+    Math.random = () => { value = (value + 0.01) % 1; return value; };
+    try { return await work(); } finally { Math.random = originalRandom; }
+  };
+  const first = fakeBrowser('old-password', { failVerification: true });
+  assert.equal((await runWithRandom(0, () => withBrowser(first, () => resetAccountPassword('stable-settings')))).success, false);
+  const recovery = fakeBrowser(first.external);
+  assert.equal((await runWithRandom(0.8, () => withBrowser(recovery, () => resetAccountPassword('stable-settings')))).success, true);
+  const launches = [...first.launchOptions, ...recovery.launchOptions];
+  assert.equal(launches.length, 3);
+  for (const options of launches) {
+    assert.deepEqual(options, launches[0], 'settings must stay consistent across separate reset/recovery jobs');
+    assert.equal(options.userAgent, 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36');
+    assert.deepEqual(options.viewport, { width: 1280, height: 720 });
+    assert.equal(options.locale, 'en-US');
+    assert.equal(options.timezoneId, 'Asia/Kolkata');
+  }
 });
 
 test('next automatic attempt recovers a changed password after verification fails', async () => {
