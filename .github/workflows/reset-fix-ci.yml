@@ -53,7 +53,7 @@ jobs:
       - name: Install browser fixture dependencies
         run: |
           npx playwright install --with-deps chromium
-          sudo apt-get install -y --no-install-recommends xvfb x11-xkb-utils
+          sudo apt-get install -y --no-install-recommends xvfb x11-xkb-utils dbus gsettings-desktop-schemas
         working-directory: server
       - name: Run mobile UI and headed browser fixtures
         run: |

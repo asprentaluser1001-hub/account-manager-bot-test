@@ -1,4 +1,4 @@
-import { chromium, BrowserContext, Page } from 'playwright';
+import { chromium, BrowserContext, Page, errors } from 'playwright';
 import { spawn, ChildProcess } from 'child_process';
 import { Readable } from 'stream';
 import { randomBytes, timingSafeEqual } from 'crypto';
@@ -26,18 +26,20 @@ function browserEnvironment(display?: string): NodeJS.ProcessEnv {
   return env;
 }
 
+async function stopChild(child: ChildProcess): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null || !child.pid) return;
+  await new Promise<void>(resolve => {
+    const timer = setTimeout(() => { child.kill('SIGKILL'); }, 1500);
+    child.once('exit', () => { clearTimeout(timer); resolve(); });
+    child.kill('SIGTERM');
+  });
+}
+
 async function startDisplay(): Promise<{ display: string; close: () => Promise<void> }> {
   const child: ChildProcess = spawn('Xvfb', ['-displayfd', '3', '-screen', '0', `${WIDTH}x${HEIGHT}x24`, '-nolisten', 'tcp', '-noreset'], {
     env: browserEnvironment(), stdio: ['ignore', 'ignore', 'ignore', 'pipe'],
   });
-  const close = async () => {
-    if (child.exitCode !== null || child.signalCode !== null || !child.pid) return;
-    child.kill('SIGTERM');
-    await new Promise<void>(resolve => {
-      const timer = setTimeout(() => { child.kill('SIGKILL'); resolve(); }, 1500);
-      child.once('exit', () => { clearTimeout(timer); resolve(); });
-    });
-  };
+  const close = () => stopChild(child);
   try {
     const number = await new Promise<string>((resolve, reject) => {
       let text = '';
@@ -57,10 +59,39 @@ async function startDisplay(): Promise<{ display: string; close: () => Promise<v
   }
 }
 
+// Headed Chromium needs a desktop session bus on a minimal VPS. Give this
+// viewer its own Unix socket inside its private profile, never a TCP listener
+// or an inherited desktop session. It receives no app credentials.
+async function startDesktopBus(profile: string): Promise<{ address: string; close: () => Promise<void> }> {
+  const child = spawn('dbus-daemon', ['--session', '--nofork', '--nopidfile', `--address=unix:tmpdir=${profile}`, '--print-address=3'], {
+    env: browserEnvironment(), stdio: ['ignore', 'ignore', 'ignore', 'pipe'],
+  });
+  const close = () => stopChild(child);
+  try {
+    const address = await new Promise<string>((resolve, reject) => {
+      let output = '';
+      const timer = setTimeout(() => reject(new Error('Desktop bus timeout')), 5000);
+      const fail = () => { clearTimeout(timer); reject(new Error('Desktop bus unavailable')); };
+      child.once('error', fail);
+      child.once('exit', fail);
+      (child.stdio[3] as Readable).on('data', chunk => {
+        output += String(chunk);
+        if (/^unix:[^\r\n]+\n$/.test(output)) { clearTimeout(timer); resolve(output.trim()); }
+        else if (output.length > 4096) fail();
+      });
+    });
+    return { address, close };
+  } catch {
+    await close();
+    throw new AdminBrowserError('VPS desktop bus unavailable. Run the browser-viewer setup command.');
+  }
+}
+
 interface BrowserHandle { context: BrowserContext; close: () => Promise<void>; }
 async function launchManualBrowser(signal: AbortSignal): Promise<BrowserHandle> {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'flingroulette-manual-browser-'));
   let display: Awaited<ReturnType<typeof startDisplay>> | undefined;
+  let desktopBus: Awaited<ReturnType<typeof startDesktopBus>> | undefined;
   let context: BrowserContext | undefined;
   let closing: Promise<void> | undefined;
   const close = () => closing ||= (async () => {
@@ -70,6 +101,7 @@ async function launchManualBrowser(signal: AbortSignal): Promise<BrowserHandle> 
       await context.close().catch(() => {});
       if (browser) await browser.close().catch(() => {});
     }
+    if (desktopBus) await desktopBus.close();
     if (display) await display.close();
     fs.rmSync(profile, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
   })();
@@ -79,14 +111,22 @@ async function launchManualBrowser(signal: AbortSignal): Promise<BrowserHandle> 
     signal.throwIfAborted();
     display = await startDisplay();
     signal.throwIfAborted();
+    desktopBus = await startDesktopBus(profile);
+    signal.throwIfAborted();
     context = await chromium.launchPersistentContext(profile, {
-      headless: false, timeout: 20_000, viewport: { width: WIDTH, height: HEIGHT },
+      headless: false, timeout: 60_000, viewport: { width: WIDTH, height: HEIGHT },
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
-      env: browserEnvironment(display.display), acceptDownloads: false,
+      env: { ...browserEnvironment(display.display), DBUS_SESSION_BUS_ADDRESS: desktopBus.address }, acceptDownloads: false,
     });
     signal.throwIfAborted();
     return { context, close };
-  } catch (error) { await close(); throw error; }
+  } catch (error) {
+    await close();
+    if (!signal.aborted && error instanceof errors.TimeoutError) {
+      throw new AdminBrowserError('VPS browser startup exceeded 60 seconds. Run the local browser diagnostic in Termius.');
+    }
+    throw error;
+  }
 }
 
 interface Session {
