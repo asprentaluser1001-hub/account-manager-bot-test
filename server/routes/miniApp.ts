@@ -4,7 +4,8 @@ import {adminAuth} from '../auth';
 import {db} from '../db';
 import {verifyMiniAppData,MiniAppUser} from '../lib/miniAppAuth';
 import {createWebOrder,customerHasFailedReset,getOrder,markGatewayError,PRICES,saveGatewayLinks,TestOrder} from '../lib/testOrders';
-import {createImbOrder,isImbConfigured} from '../lib/imbPayment';
+import {createImbOrder} from '../lib/imbPayment';
+import {activePaymentProvider,paymentGatewayConfig} from '../lib/paymentGateway';
 import {setting} from '../lib/telegramBot';
 import {pendingMiniAppExtensions} from '../lib/miniAppExtensions';
 
@@ -37,13 +38,14 @@ miniAppRouter.post('/book',async(req:CustomerRequest,res)=>{
  if(!Object.prototype.hasOwnProperty.call(PRICES,hours))return res.status(400).json({error:'Choose a valid booking duration'});
  if(activeFor(user.id)&&!req.body?.advance)return res.status(409).json({error:'Your current booking is still active'});
  const preview=process.env.V3_PREVIEW==='true'&&process.env.PAYMENT_MODE==='mock';
- if(!preview&&!isImbConfigured())return res.status(503).json({error:'Payment checkout is unavailable'});
+ if(!preview&&!paymentGatewayConfig().gatewayEnabled)return res.status(503).json({error:'Payment checkout is unavailable'});
  try{
   const active=activeFor(user.id);if(req.body?.advance&&active?.expires_at&&Date.parse(String(req.body.startsAt))<Date.parse(active.expires_at))throw new Error('Advance slot must start after your current booking');
   const {order,accessToken}=req.body?.advance?createAdvanceOrder(user.name,user.id,hours,String(req.body.accountId||''),String(req.body.startsAt||'')):createWebOrder(user.name,'',hours,user.id,user.id);
   const destination=new URL('/checkout',process.env.PUBLIC_CHECKOUT_URL||`${req.protocol}://${req.get('host')}`);
   destination.searchParams.set('order',order.id);destination.searchParams.set('token',accessToken);destination.searchParams.set('amount',String(order.amount));destination.searchParams.set('hours',String(hours));
-  if(!preview){
+  db.prepare('UPDATE test_orders SET payment_provider=? WHERE id=?').run(activePaymentProvider(),order.id);
+  if(!preview&&activePaymentProvider()==='imb'){
    try{const links=await createImbOrder({orderId:order.id,amount:order.amount,mobile:'',redirectUrl:destination.toString()});saveGatewayLinks(order.id,links);}
    catch(error){markGatewayError(order.id,error instanceof Error?error.message:'IMB order creation failed');throw error;}
   }
@@ -56,11 +58,13 @@ miniAppRouter.post('/extend',async(req:CustomerRequest,res)=>{
  if(order.status==='delivery_failed')return res.status(409).json({error:'Contact support to resolve access before extending'});
  try{
   const preview=process.env.V3_PREVIEW==='true'&&process.env.PAYMENT_MODE==='mock';
-  if(!preview&&!isImbConfigured())return res.status(503).json({error:'Payment checkout is unavailable'});
-  const {order:payment,accessToken}=createExtensionOrder(order);
+  if(!preview&&!paymentGatewayConfig().gatewayEnabled)return res.status(503).json({error:'Payment checkout is unavailable'});
+  const {order:payment,accessToken,existing}=createExtensionOrder(order);
+  const provider=existing?(payment.payment_provider||'imb'):activePaymentProvider();
   const destination=new URL('/checkout',process.env.PUBLIC_CHECKOUT_URL||`${req.protocol}://${req.get('host')}`);
   destination.searchParams.set('order',payment.id);destination.searchParams.set('token',accessToken);destination.searchParams.set('amount',String(payment.amount));destination.searchParams.set('hours','1');
-  if(!preview){try{saveGatewayLinks(payment.id,await createImbOrder({orderId:payment.id,amount:payment.amount,mobile:'',redirectUrl:destination.toString()}));}catch(error){markGatewayError(payment.id,error instanceof Error?error.message:'Payment unavailable');throw error;}}
+  db.prepare('UPDATE test_orders SET payment_provider=? WHERE id=?').run(provider,payment.id);
+  if(!preview&&provider==='imb'&&!existing){try{saveGatewayLinks(payment.id,await createImbOrder({orderId:payment.id,amount:payment.amount,mobile:'',redirectUrl:destination.toString()}));}catch(error){markGatewayError(payment.id,error instanceof Error?error.message:'Payment unavailable');throw error;}}
   return res.status(201).json({checkoutUrl:destination.pathname+destination.search});
  }catch(error){return res.status(409).json({error:error instanceof Error?error.message:'Could not start extension'})}
 });

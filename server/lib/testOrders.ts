@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from 'crypto';
 import { db } from '../db';
 import {assertBookingWindow,releaseHold,availability} from './v5Bookings';
 
-export type TestOrder = { account_name?:string|null; account_email?:string|null; customer_key?:string|null; id:string; chat_id:string; username:string; hours:number; amount:number; status:string; account_id:string|null; created_at:string; claimed_at:string|null; approved_at:string|null; expires_at:string|null; delivered_at:string|null; error:string|null; source:string; access_token:string|null; customer_contact:string|null; payment_reference:string|null; proof_data_url:string|null; has_proof?:number; history_hidden:number };
+export type TestOrder = { account_name?:string|null; account_email?:string|null; customer_key?:string|null; payment_provider?:string; cashfree_session_id?:string|null; cashfree_environment?:'sandbox'|'production'|null; id:string; chat_id:string; username:string; hours:number; amount:number; status:string; account_id:string|null; created_at:string; claimed_at:string|null; approved_at:string|null; expires_at:string|null; delivered_at:string|null; error:string|null; source:string; access_token:string|null; customer_contact:string|null; payment_reference:string|null; proof_data_url:string|null; has_proof?:number; history_hidden:number };
 export const PRICES: Record<number,number> = {0.5:70,1:100,2:150,3:200,168:750,720:1800};
 
 db.exec(`CREATE TABLE IF NOT EXISTS test_orders (
@@ -22,6 +22,9 @@ for (const [name, definition] of [
  ['payment_reference', 'TEXT'],
  ['proof_data_url', 'TEXT'],
  ['end_notified_at', 'TEXT'],
+ ['payment_provider',"TEXT NOT NULL DEFAULT 'imb'"],
+ ['cashfree_session_id','TEXT'],
+ ['cashfree_environment','TEXT'],
  ['gateway_payment_url','TEXT'],
  ['gateway_phonepe_link','TEXT'],
  ['gateway_paytm_link','TEXT'],
@@ -189,7 +192,7 @@ export function submitWebProof(id:string,accessToken:string,paymentReference:str
  return getOrder(id)!;
 }
 export function publicWebOrder(id:string,accessToken:string){
- const order=db.prepare("SELECT id,username,hours,amount,status,created_at,claimed_at,approved_at,expires_at,error,order_type,parent_order_id,(SELECT starts_at FROM booking_slots WHERE order_id=test_orders.id) AS starts_at,(SELECT hold_until FROM booking_slots WHERE order_id=test_orders.id) AS payment_deadline,gateway_payment_url AS payment_url,gateway_phonepe_link AS phonepe_link,gateway_paytm_link AS paytm_link,gateway_bhim_link AS bhim_link FROM test_orders WHERE id=? AND access_token=? AND source IN ('web','telegram')").get(id,accessToken) as (Partial<TestOrder>&{payment_url?:string;phonepe_link?:string;paytm_link?:string;bhim_link?:string})|undefined;
+ const order=db.prepare("SELECT id,username,hours,amount,status,created_at,claimed_at,approved_at,expires_at,error,order_type,parent_order_id,(SELECT starts_at FROM booking_slots WHERE order_id=test_orders.id) AS starts_at,(SELECT hold_until FROM booking_slots WHERE order_id=test_orders.id) AS payment_deadline,payment_provider,cashfree_session_id AS payment_session_id,cashfree_environment,gateway_payment_url AS payment_url,gateway_phonepe_link AS phonepe_link,gateway_paytm_link AS paytm_link,gateway_bhim_link AS bhim_link FROM test_orders WHERE id=? AND access_token=? AND source IN ('web','telegram')").get(id,accessToken) as (Partial<TestOrder>&{payment_url?:string;phonepe_link?:string;paytm_link?:string;bhim_link?:string})|undefined;
  if(!order)throw new Error('Order not found');
  let credentials:null|{email:string;password:string}=null;
  if(['approved','delivered','delivery_failed'].includes(String(order.status))&&order.expires_at&&new Date(order.expires_at).getTime()>Date.now()){

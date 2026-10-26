@@ -72,12 +72,12 @@ export function createExtensionOrder(parent:TestOrder){
   if(parent.hours===0.5)throw new Error('30-minute bookings cannot be extended');
   expireHolds();
   const existing=db.prepare("SELECT o.* FROM test_orders o JOIN booking_slots s ON s.order_id=o.id WHERE o.parent_order_id=? AND s.kind='extension' AND s.status='hold'").get(parent.id) as TestOrder|undefined;
-  if(existing)return {order:existing,accessToken:existing.access_token!};
+  if(existing)return {order:existing,accessToken:existing.access_token!,existing:true};
   const eligibility=extensionEligibility(parent);if(!eligibility.allowed)throw new Error(eligibility.reason!);
   const id='WEB-'+randomUUID().slice(0,8).toUpperCase(),accessToken=randomBytes(24).toString('base64url'),now=new Date().toISOString();
   db.prepare("INSERT INTO test_orders(id,chat_id,username,hours,amount,status,created_at,source,access_token,account_id,order_type,parent_order_id) VALUES (?,?,?,1,?,'awaiting_payment_claim',?,'web',?,?,'extension',?)").run(id,parent.chat_id,parent.username,EXTENSION_PRICE,now,accessToken,parent.account_id,parent.id);
   db.prepare("INSERT INTO booking_slots VALUES (?,?,?,?,?,'hold','extension')").run(id,parent.account_id,parent.expires_at,new Date(Date.parse(parent.expires_at!)+3600000).toISOString(),parent.expires_at);
-  return {order:getOrder(id)!,accessToken};
+  return {order:getOrder(id)!,accessToken,existing:false};
  })();
 }
 export function releaseHold(id:string){db.prepare("UPDATE booking_slots SET status='expired' WHERE order_id=? AND status='hold'").run(id);}

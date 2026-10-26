@@ -25,8 +25,8 @@ import {adminBrowserRouter,serveAdminBrowserPage,shutdownAdminBrowser} from './r
 const sandboxMode = process.env.SANDBOX_MODE === 'true';
 const v3Preview = process.env.V3_PREVIEW === 'true';
 const paymentMode = String(process.env.PAYMENT_MODE || '').toLowerCase();
-if (v3Preview && (!sandboxMode || paymentMode !== 'mock' || process.env.IMB_API_TOKEN?.trim())) {
-  throw new Error('V3 developer preview requires SANDBOX_MODE=true, PAYMENT_MODE=mock, and no IMB_API_TOKEN.');
+if (v3Preview && (!sandboxMode || paymentMode !== 'mock' || (process.env.IMB_API_TOKEN?.trim() || process.env.CASHFREE_APP_ID?.trim() || process.env.CASHFREE_SECRET_KEY?.trim()))) {
+  throw new Error('V3 developer preview requires SANDBOX_MODE=true, PAYMENT_MODE=mock, and no payment gateway credentials.');
 }
 if (!process.env.ADMIN_PASSWORD || process.env.ADMIN_PASSWORD.length < 12 || !process.env.JWT_SECRET || process.env.JWT_SECRET.length < 32) throw new Error('Configure strong ADMIN_PASSWORD and JWT_SECRET before starting.');
 // Demo accounts are created only in the explicit sample-only mode.

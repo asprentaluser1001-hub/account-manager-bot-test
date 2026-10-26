@@ -192,7 +192,7 @@ async function handleCallback(c:any){
    const hours=Number(data.slice(6));
    if(checkoutUrl){
     const link=new URL('/checkout',checkoutUrl);link.searchParams.set('hours',String(hours));link.searchParams.set('new','1');
-    await say(chatId,sandboxMode?`Create a TEST booking for ${duration(hours)} on the preview checkout. No payment is collected.`:`Book ${duration(hours)} through IMB. Enter your name on the checkout page, then continue to secure payment.`,buttons([[{text:sandboxMode?'Open test checkout':'Book through IMB',url:link.toString()}],[homeButton]]));
+    await say(chatId,sandboxMode?`Create a TEST booking for ${duration(hours)} on the preview checkout. No payment is collected.`:`Book ${duration(hours)} through secure checkout. Enter your name on the checkout page, then continue to secure payment.`,buttons([[{text:sandboxMode?'Open test checkout':'Book through secure checkout',url:link.toString()}],[homeButton]]));
    }else{
     const order=createOrder(chatId,String(c.from?.username||c.from?.first_name||'customer'),hours);
     await say(chatId,`TEST ORDER ${order.id}\n${duration(order.hours)} · ₹${order.amount}\nNo payment is collected in this test. Tap below to simulate a payment claim.`,buttons([[{text:'Simulate payment claim',callback_data:`claim:${order.id}`}],[homeButton]]));
