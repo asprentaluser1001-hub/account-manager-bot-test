@@ -114,3 +114,35 @@ body {
 .v3-shell{touch-action:manipulation}
 /* iOS Safari zooms a page when a focused form control renders below 16px. */
 @media(max-width:767px){.v3-shell input:not([type=checkbox]):not([type=radio]),.v3-shell select,.v3-shell textarea{font-size:16px}}
+
+/* V6: lighter botanical glass for the admin dashboard. */
+.v6-shell{--v3-line:rgba(255,255,255,.64)}
+.v6-shell .admin-panel,.v6-shell .v3-overview-card,
+.v6-shell .v3-glass,.v6-shell .v3-metric,
+.v6-shell .v3-main .bg-white:not(button):not(input):not(select):not(textarea),
+.v6-shell .v3-main .bg-slate-50:not(button):not(input):not(select):not(textarea),
+.v6-shell .v3-control-card{
+  background:rgba(255,255,252,.36);
+  border:1px solid rgba(255,255,255,.66);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.78),0 12px 32px rgba(24,58,44,.08);
+  backdrop-filter:blur(18px) saturate(115%);
+  -webkit-backdrop-filter:blur(18px) saturate(115%);
+}
+.v6-shell .admin-tabs,.v6-shell .v3-booking-tabs{
+  background:rgba(255,255,251,.23);
+  border-color:rgba(255,255,255,.68);
+  backdrop-filter:blur(22px) saturate(120%);
+  -webkit-backdrop-filter:blur(22px) saturate(120%);
+}
+.v6-shell .admin-secondary{background:rgba(255,255,255,.54)}
+.v6-shell input:not([type=checkbox]):not([type=radio]),.v6-shell select,.v6-shell textarea{background:rgba(255,255,255,.72)}
+.v6-shell .admin-tabs button.active,.v6-shell .v3-booking-tabs button.active{background:rgba(214,243,225,.64)}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  .v6-shell .admin-panel,.v6-shell .v3-overview-card,.v6-shell .v3-glass,
+  .v6-shell .v3-main .bg-white:not(button),.v6-shell .v3-main .bg-slate-50:not(button){background:rgba(255,255,251,.92)}
+}
+@media(prefers-reduced-transparency:reduce){
+  .v6-shell .admin-panel,.v6-shell .v3-overview-card,.v6-shell .v3-glass,
+  .v6-shell .v3-main .bg-white:not(button),.v6-shell .v3-main .bg-slate-50:not(button),
+  .v6-shell .admin-tabs,.v6-shell .v3-booking-tabs{background:rgba(255,255,251,.96);backdrop-filter:none;-webkit-backdrop-filter:none}
+}

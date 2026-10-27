@@ -49,6 +49,7 @@ type Overview = {
   finance: {
     days: { day: string; amount: number; bookings: number }[];
     cutoff: string;
+    until: string;
   };
   available: { id: string; name: string }[];
   active: { id: string; name: string; soldUntil: string }[];
@@ -333,7 +334,8 @@ export default function OrdersPanel({
         (order) =>
           complete.has(order.status) &&
           order.approved_at &&
-          indiaDay(new Date(order.approved_at)) >= data!.finance.cutoff,
+          indiaDay(new Date(order.approved_at)) >= data!.finance.cutoff &&
+          indiaDay(new Date(order.approved_at)) < data!.finance.until,
       ),
     [data],
   );
@@ -558,18 +560,18 @@ export default function OrdersPanel({
       {view === "finance" && (
         <>
           <p className="mb-4 text-xs text-slate-500">
-            India time · earnings from 26 Sep 2026 onward. Earlier bookings
+            India time · totals for this calendar month. Earlier bookings
             remain in History.
           </p>
           <div className="grid grid-cols-2 gap-3 mb-6">
             <Metric label="Today" value={money(today)} />
             <Metric label="Last 7 days" value={money(weekRevenue)} />
             <Metric
-              label="Since 26 Sep"
+              label="This month"
               value={money(data?.summary.revenue || 0)}
             />
             <Metric
-              label="Confirmed bookings"
+              label="Bookings this month"
               value={String(data?.summary.sales || 0)}
             />
           </div>

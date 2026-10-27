@@ -1,3 +1,4 @@
+import {indiaMonthWindow} from './reportingPeriod';
 import { randomBytes, randomUUID } from 'crypto';
 import { db } from '../db';
 import {assertBookingWindow,releaseHold,availability} from './v5Bookings';
@@ -247,12 +248,14 @@ export function sandboxReset(accountId:string):{success:boolean;newPassword?:str
  db.prepare('UPDATE accounts SET password=?,last_reset_at=?,reset_candidate_password=NULL WHERE id=?').run(newPassword,new Date().toISOString(),accountId);
  return {success:true,newPassword};
 }
-export function summary(){
- const paid=db.prepare("SELECT COUNT(*) as sales,COALESCE(SUM(amount),0) as revenue FROM test_orders WHERE history_hidden=0 AND status IN ('payment_late','reserved','reservation_failed','approved','delivered','expired','delivery_failed','reset_failed','cancelled') AND approved_at >= '2026-09-25T18:30:00.000Z'").get() as {sales:number;revenue:number};
+export function summary(now = new Date()){
+ const {start,end}=indiaMonthWindow(now);
+ const paid=db.prepare("SELECT COUNT(*) as sales,COALESCE(SUM(amount),0) as revenue FROM test_orders WHERE history_hidden=0 AND status IN ('payment_late','reserved','reservation_failed','approved','delivered','expired','delivery_failed','reset_failed','cancelled') AND approved_at >= ? AND approved_at < ?").get(start,end) as {sales:number;revenue:number};
  return {...paid,bookings:(db.prepare("SELECT COUNT(*) as n FROM test_orders WHERE history_hidden=0").get() as {n:number}).n,customers:(db.prepare("SELECT COUNT(DISTINCT chat_id) as n FROM test_orders WHERE history_hidden=0").get() as {n:number}).n,pending:db.prepare("SELECT COUNT(*) as n FROM test_orders WHERE history_hidden=0 AND status='payment_claimed'").get() as {n:number},available:availableAccounts().length};
 }
-export function finance(){
- const rows=db.prepare("SELECT date(approved_at,'+330 minutes') AS day, COUNT(*) AS bookings, SUM(amount) AS amount FROM test_orders WHERE history_hidden=0 AND status IN ('payment_late','reserved','reservation_failed','approved','delivered','expired','delivery_failed','reset_failed','cancelled') AND approved_at >= '2026-09-25T18:30:00.000Z' GROUP BY day ORDER BY day DESC").all() as Array<{day:string;bookings:number;amount:number}>;
- return {days:rows,cutoff:'2026-09-26'};
+export function finance(now = new Date()){
+ const {start,end,recentStart,cutoff,until}=indiaMonthWindow(now);
+ const rows=db.prepare("SELECT date(approved_at,'+330 minutes') AS day, COUNT(*) AS bookings, SUM(amount) AS amount FROM test_orders WHERE history_hidden=0 AND status IN ('payment_late','reserved','reservation_failed','approved','delivered','expired','delivery_failed','reset_failed','cancelled') AND approved_at >= ? AND approved_at < ? GROUP BY day ORDER BY day DESC").all(start < recentStart ? start : recentStart,end) as Array<{day:string;bookings:number;amount:number}>;
+ return {days:rows,cutoff,until};
 }
 

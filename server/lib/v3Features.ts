@@ -1,3 +1,4 @@
+import {indiaMonthWindow} from './reportingPeriod';
 import {assertBookingWindow} from './v5Bookings';
 import {randomUUID} from 'crypto';
 import {db} from '../db';
@@ -92,13 +93,14 @@ export function setRefund(id:string,status:string,note:string){
  log('refund.status',id,status);return {orderId:id,status,note};
 }
 
-export function financeReport(){
- const rows=db.prepare("SELECT date(approved_at,'+330 minutes') day,amount,status,order_type FROM test_orders WHERE history_hidden=0 AND approved_at IS NOT NULL AND approved_at >= '2026-09-25T18:30:00.000Z' ORDER BY approved_at DESC").all() as Array<{day:string;amount:number;status:string;order_type:string}>;
+export function financeReport(now = new Date()){
+ const {start,end,cutoff,until}=indiaMonthWindow(now);
+ const rows=db.prepare("SELECT date(approved_at,'+330 minutes') day,amount,status,order_type FROM test_orders WHERE history_hidden=0 AND approved_at IS NOT NULL AND approved_at >= ? AND approved_at < ? ORDER BY approved_at DESC").all(start,end) as Array<{day:string;amount:number;status:string;order_type:string}>;
  const confirmed=rows.filter(row=>['payment_late','reserved','reservation_failed','approved','delivered','expired','delivery_failed','reset_failed','cancelled'].includes(row.status));
  const sum=(subset:typeof rows)=>subset.reduce((value,row)=>value+row.amount,0);
  const period=(key:string)=>({period:key,bookings:confirmed.filter(row=>row.day.startsWith(key)).length,revenue:sum(confirmed.filter(row=>row.day.startsWith(key)))});
- const failures=db.prepare("SELECT COUNT(*) n FROM test_orders WHERE history_hidden=0 AND status IN ('rejected','payment_gateway_error')").get() as {n:number};
- return {daily:[...new Set(confirmed.map(row=>row.day))].map(period),monthly:[...new Set(confirmed.map(row=>row.day.slice(0,7)))].map(period),total:sum(confirmed),successful:confirmed.length,failed:failures.n,refunds:refundStates()};
+ const failures=db.prepare("SELECT COUNT(*) n FROM test_orders WHERE history_hidden=0 AND status IN ('rejected','payment_gateway_error') AND created_at >= ? AND created_at < ?").get(start,end) as {n:number};
+ return {cutoff,until,daily:[...new Set(confirmed.map(row=>row.day))].map(period),monthly:[...new Set(confirmed.map(row=>row.day.slice(0,7)))].map(period),total:sum(confirmed),successful:confirmed.length,failed:failures.n,refunds:refundStates()};
 }
 
 export function recordAccountRecovery(accountId:string,action:string,name:string){log('account.recovery.'+action,accountId,name);}
