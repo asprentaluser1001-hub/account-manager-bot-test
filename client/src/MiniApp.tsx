@@ -5,7 +5,7 @@ type Row={id:string;hours:number;amount:number;status:string;createdAt:string;ex
 type Slot={id:string;name:string;used:boolean;availableAt:string|null;resetPending:boolean};
 type Account={slots:Slot[];reservations:Array<{id:string;hours:number;startsAt:string;endsAt:string}>;user:{id:string;name:string};available:boolean;blocked:boolean;prices:Record<string,number>;supportUsername:string|null;active:{id:string;hours:number;startsAt:string|null;expiresAt:string;status:string;extensionRequested:boolean;extensionAllowed:boolean;extensionPending:boolean;extensionReason:string|null;credentials:{email:string;password:string}|null}|null;recent:Row[]};
 type Tab='home'|'book'|'history'|'help';
-type TelegramApp={initData:string;ready:()=>void;expand:()=>void;close:()=>void;openTelegramLink?:(url:string)=>void};
+type TelegramApp={platform?:string;openLink?:(url:string,options?:{try_instant_view?:boolean})=>void;initData:string;ready:()=>void;expand:()=>void;close:()=>void;openTelegramLink?:(url:string)=>void};
 declare global {interface Window {Telegram?:{WebApp:TelegramApp}}}
 
 function remaining(end:string,now:number){const total=Math.max(0,Math.floor((Date.parse(end)-now)/1000));return total?`${Math.floor(total/3600)?Math.floor(total/3600)+'h ':''}${String(Math.floor(total%3600/60)).padStart(2,'0')}m ${String(total%60).padStart(2,'0')}s`:'Ending soon';}
