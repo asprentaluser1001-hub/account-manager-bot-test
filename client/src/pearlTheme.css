@@ -87,3 +87,26 @@ body{background:#d9eef0;color:var(--pearl-ink)}
  .pearl-option-enter,.mini-faq details[open]>p{animation:none!important}
  .mini-progress span,.booking-time-track span{transition:none}
 }
+
+/* V6.1.2: a single darker selection pill slides across each navigation rail. */
+.v6-shell .admin-tabs.pearl-slider,.v6-shell .v3-booking-tabs.pearl-slider{position:relative}
+.pearl-slider{isolation:isolate}
+.pearl-slider::before{
+ content:"";position:absolute;left:0;top:0;pointer-events:none;z-index:0;
+ width:var(--pill-width,0px);height:var(--pill-height,0px);
+ transform:translate3d(var(--pill-x,0px),var(--pill-y,0px),0);
+ opacity:var(--pill-visible,0);border-radius:999px;box-sizing:border-box;
+ background:linear-gradient(135deg,rgba(17,113,136,.48),rgba(35,144,163,.35));
+ border:1px solid rgba(11,98,119,.46);
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.66),0 4px 15px rgba(10,83,106,.20);
+}
+.pearl-slider[data-pill-ready="true"]::before{
+ transition:transform 340ms cubic-bezier(.22,.8,.25,1),width 340ms cubic-bezier(.22,.8,.25,1),height 240ms ease,opacity 150ms ease;
+}
+.v6-shell .admin-tabs.pearl-slider>button,.v6-shell .v3-booking-tabs.pearl-slider>button,.mini-nav.pearl-slider>button{position:relative;z-index:1;background:transparent;box-shadow:none}
+.v6-shell .admin-tabs.pearl-slider>button.active,.v6-shell .v3-booking-tabs.pearl-slider>button.active,.mini-nav.pearl-slider>button.selected{
+ background:transparent;box-shadow:none;color:#073d4d;font-weight:800;
+}
+.v6-shell .admin-tabs.pearl-slider,.v6-shell .v3-booking-tabs.pearl-slider,.mini-nav.pearl-slider{border-color:rgba(255,255,255,.9);box-shadow:0 8px 24px rgba(30,91,111,.15),inset 0 1px 0 #ffffffba}
+@media(prefers-reduced-motion:reduce){.pearl-slider[data-pill-ready="true"]::before{transition:none}}
+@media(prefers-reduced-transparency:reduce){.pearl-slider::before{background:#85b9c5;border-color:#3c8498}}

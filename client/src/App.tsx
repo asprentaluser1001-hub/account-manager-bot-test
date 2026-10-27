@@ -1,4 +1,4 @@
-import {useTabMotion} from './useTabMotion';
+import {useSlidingIndicator} from './useSlidingIndicator';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import OrdersPanel from './OrdersPanel';
 import BotSettingsPanel from './BotSettingsPanel';
@@ -318,7 +318,8 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
   const requestedTab=new URLSearchParams(window.location.search).get('tab');
   type Tab = 'overview' | 'accounts' | 'manual' | 'finance' | 'history' | 'settings';
   const [activeTab, setActiveTab] = useState<Tab>(()=>requestedTab==='approvals'?'history':['overview','accounts','manual','finance','history','settings'].includes(String(requestedTab))?requestedTab as Tab:'overview');
-  const tabContentRef = useTabMotion<HTMLElement>(activeTab);
+  const mainNavRef = useSlidingIndicator(activeTab);
+  const bookingNavRef = useSlidingIndicator(activeTab);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -588,7 +589,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
           </div>
         </div>
         <div className="max-w-3xl mx-auto px-4 sm:px-5 pb-3">
-          <nav className="admin-tabs" aria-label="Dashboard sections">
+          <nav ref={mainNavRef} className="admin-tabs pearl-slider" aria-label="Dashboard sections">
             {([['overview','Home','home'],['manual','Bookings','bookings'],['accounts','Accounts','accounts'],['finance','Reports','reports'],['settings','More','more']] as const).map(([id,label,icon]) => (
               <button key={id} onClick={() => setActiveTab(id)} aria-current={(id === 'manual' ? ['manual','history'].includes(activeTab) : activeTab === id) ? 'page' : undefined} className={(id === 'manual' ? ['manual','history'].includes(activeTab) : activeTab === id) ? 'active' : ''}><Icon path={ICONS[icon]} className="w-5 h-5" /><span>{label}</span></button>
             ))}
@@ -596,9 +597,9 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
         </div>
       </header>
 
-      <main ref={tabContentRef} className="v3-main max-w-3xl mx-auto px-4 sm:px-5 py-6">
+      <main className="v3-main max-w-3xl mx-auto px-4 sm:px-5 py-6">
         {pushMessage&&<div className={`mb-4 rounded-xl border px-3.5 py-2.5 text-sm ${pushState==='on'?'border-emerald-200 bg-emerald-50 text-emerald-700':'border-amber-200 bg-amber-50 text-amber-800'}`}>{pushMessage}</div>}
-        {(['manual','history'] as const).includes(activeTab as 'manual'|'history') && <nav className="v3-booking-tabs" aria-label="Booking tools">{([['manual','Manual booking'],['history','History']] as const).map(([id,label])=><button key={id} onClick={()=>setActiveTab(id)} className={activeTab===id?'active':''} aria-current={activeTab===id?'page':undefined}>{label}</button>)}</nav>}
+        {(['manual','history'] as const).includes(activeTab as 'manual'|'history') && <nav ref={bookingNavRef} className="v3-booking-tabs pearl-slider" aria-label="Booking tools">{([['manual','Manual booking'],['history','History']] as const).map(([id,label])=><button key={id} onClick={()=>setActiveTab(id)} className={activeTab===id?'active':''} aria-current={activeTab===id?'page':undefined}>{label}</button>)}</nav>}
         {activeTab === 'overview' ? <OverviewPanel token={token} accounts={accounts} onNavigate={setActiveTab} /> : activeTab === 'settings' ? (
           <>
             <section className="admin-panel" aria-label="Notification settings"><h2 className="font-heading text-xl font-bold text-slate-900">Notification settings</h2><p className="text-sm text-slate-600 mt-1 mb-4">Get booking alerts on this device.</p><button onClick={enablePush} disabled={pushState==='checking'||pushState==='unsupported'} className="admin-secondary" type="button">{pushState==='on'?'● Alerts on':pushState==='checking'?'Checking alerts…':pushState==='unsupported'?'Notifications unavailable':'🔔 Enable alerts'}</button></section>
