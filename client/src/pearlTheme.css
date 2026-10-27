@@ -162,12 +162,12 @@ body{background:#d9eef0;color:var(--pearl-ink)}
 /* V6.2.1: edge-to-edge bottom blur, fading upward; no navigation dock. */
 .pearl-bottom-blur{
  display:none;position:fixed;left:0;right:0;bottom:0;
- height:calc(176px + env(safe-area-inset-bottom));z-index:5;
+ height:var(--bottom-blur-height,calc(110px + env(safe-area-inset-bottom)));z-index:5;
  pointer-events:none;border:0;border-radius:0;
- background:linear-gradient(to top,rgba(231,248,251,.72),rgba(243,253,255,.22) 70%,rgba(243,253,255,0));
- backdrop-filter:blur(25px) saturate(135%);-webkit-backdrop-filter:blur(25px) saturate(135%);
- mask-image:linear-gradient(to bottom,transparent,rgba(0,0,0,.35) 30%,#000 78%);
- -webkit-mask-image:linear-gradient(to bottom,transparent,rgba(0,0,0,.35) 30%,#000 78%);
+ background:linear-gradient(to top,rgba(232,249,252,.94),rgba(239,252,254,.80) 65%,rgba(243,253,255,0));
+ backdrop-filter:blur(38px) saturate(125%);-webkit-backdrop-filter:blur(38px) saturate(125%);
+ mask-image:linear-gradient(to bottom,transparent,#000 26%,#000);
+ -webkit-mask-image:linear-gradient(to bottom,transparent,#000 26%,#000);
 }
 .mini-shell>.pearl-bottom-blur{display:block}
 .mini-nav.pearl-slider{
@@ -188,4 +188,12 @@ body{background:#d9eef0;color:var(--pearl-ink)}
 }
 @media(prefers-reduced-transparency:reduce){
  .pearl-bottom-blur{background:#eef9fb;backdrop-filter:none;-webkit-backdrop-filter:none;mask-image:none;-webkit-mask-image:none}
+}
+
+/* Keep status badges fitted to their text, not stretched by the booking row. */
+.v6-shell .v3-active-pill{
+ align-self:flex-start;flex:none;display:inline-flex;align-items:center;justify-content:center;
+ height:auto;min-height:0;width:auto;padding:5px 9px;line-height:1.2;white-space:nowrap;
+ color:#245e70;background:rgba(226,247,250,.66);border:1px solid rgba(137,185,197,.42);
+ border-radius:999px;font-size:11px;font-weight:650;
 }

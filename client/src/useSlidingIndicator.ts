@@ -17,6 +17,12 @@ export function useSlidingIndicator(selection: string) {
       nav.style.setProperty('--pill-width', `${selected.offsetWidth}px`);
       nav.style.setProperty('--pill-height', `${selected.offsetHeight}px`);
       nav.style.setProperty('--pill-visible', '1');
+      // Fade ends just above the icon row instead of washing out higher cards.
+      if (nav.classList.contains('admin-tabs') || nav.classList.contains('mini-nav')) {
+        const shell = nav.closest<HTMLElement>('.v6-shell,.mini-shell');
+        const height = Math.max(0, window.innerHeight - nav.getBoundingClientRect().top) + 34;
+        shell?.style.setProperty('--bottom-blur-height', `${Math.ceil(height)}px`);
+      }
     };
     measure();
     // Place the first pill immediately; subsequent selections glide from there.
@@ -25,6 +31,7 @@ export function useSlidingIndicator(selection: string) {
     observer?.observe(nav);
     nav.querySelectorAll('button').forEach(button => observer?.observe(button));
     window.addEventListener('resize', measure);
+    window.visualViewport?.addEventListener('resize', measure);
     let disposed = false;
     document.fonts?.ready.then(() => { if (!disposed) measure(); });
     return () => {
@@ -32,6 +39,7 @@ export function useSlidingIndicator(selection: string) {
       cancelAnimationFrame(frame);
       observer?.disconnect();
       window.removeEventListener('resize', measure);
+      window.visualViewport?.removeEventListener('resize', measure);
     };
   }, [selection]);
   return ref;
