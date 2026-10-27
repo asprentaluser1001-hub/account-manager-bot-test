@@ -1,3 +1,4 @@
+import {useTabMotion} from './useTabMotion';
 import {useCallback,useEffect,useState} from 'react';
 import './miniApp.css';
 
@@ -16,6 +17,7 @@ const NAV_ICONS={home:'M3 10.5 12 3l9 7.5V21h-6v-6H9v6H3V10.5z',book:'M4 7h16M7 
 
 export default function MiniApp(){
  const [data,setData]=useState<Account|null>(null),[tab,setTab]=useState<Tab>('home'),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[now,setNow]=useState(Date.now()),[advanceHours,setAdvanceHours]=useState(1),[slots,setSlots]=useState<Slot[]>([]);
+ const tabContentRef=useTabMotion(tab,Boolean(data));
  const initData=window.Telegram?.WebApp?.initData||'';
  const load=useCallback(async()=>{
   if(!initData){setError('Open the Mini App from the FlingRoulette Telegram bot.');return;}
@@ -35,7 +37,7 @@ export default function MiniApp(){
   <header className="mini-top"><button aria-label="Close" onClick={()=>window.Telegram?.WebApp?.close()} className="mini-close">×</button><span className="mini-logo">F</span><div><strong>FlingRoulette</strong><small>Your bookings</small></div><span className="mini-top-dot" aria-hidden="true">•••</span></header>
   {error&&<p className="mini-error" role="alert">{error}</p>}{notice&&<p className="mini-notice" role="status">{notice}</p>}
   {!data&&!error&&<p className="mini-loading">Loading your bookings…</p>}
-  {data&&<>
+  {data&&<div ref={tabContentRef} className="pearl-tab-content">
    {tab==='home'&&<>
     <section className="mini-intro"><h1>Hello, {data.user.name.split(' ')[0]}</h1><p>Your access at a glance</p></section>
     <Availability available={data.available}/>{data.blocked&&<div className="mini-feature mini-support"><h2>Booking paused</h2><p>Your ID needs password recovery. You can book again after the admin approves you.</p>{data.supportUsername&&<a className="mini-extend" href={`https://t.me/${data.supportUsername}`}>Contact admin</a>}</div>}
@@ -52,7 +54,7 @@ export default function MiniApp(){
     <details><summary>Where can I find my bookings?</summary><p>See the current booking on Home and past confirmed bookings in History.</p></details>
     <details><summary>What if payment or access fails?</summary><p>Contact the admin with your booking ID. Do not submit a second payment until they advise you.</p></details>
    </div><div className="mini-feature mini-support"><h2>Still need help?</h2><p>Message the admin directly about payments, access or extensions.</p>{data.supportUsername?<a className="mini-extend" href={`https://t.me/${data.supportUsername}`} onClick={event=>{if(window.Telegram?.WebApp?.openTelegramLink){event.preventDefault();window.Telegram.WebApp.openTelegramLink(`https://t.me/${data.supportUsername}`)}}}>Contact admin <span>›</span></a>:<p className="mini-hint">The admin hasn’t added a support contact yet. Please message the FlingRoulette bot.</p>}</div></section>}
-  </>}
+  </div>}
  </div><nav className="mini-nav" aria-label="Mini App navigation">{(['home','book','history','help'] as const).map((item)=><button key={item} className={tab===item?'selected':''} onClick={()=>{setTab(item);setNotice('');if(item==='home'||item==='book')void load()}} aria-current={tab===item?'page':undefined}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={NAV_ICONS[item]}/></svg><span>{item[0].toUpperCase()+item.slice(1)}</span></button>)}</nav></div>;
 }
 function Availability({available}:{available:boolean}){return <div className={`mini-availability ${available?'is-available':'is-unavailable'}`} role="status"><span className="mini-availability-dot" aria-hidden="true"/><div><strong>{available?'Accounts available now':'No accounts available right now'}</strong><small>For new bookings · Refreshes automatically</small></div></div>}

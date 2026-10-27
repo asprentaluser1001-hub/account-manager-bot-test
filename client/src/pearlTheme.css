@@ -1,5 +1,5 @@
 /* Pearl Aqua: the supplied artwork, shared by admin, mini app and checkout. */
-:root{--pearl-ink:#163b48;--pearl-muted:#496674;--pearl-accent:#086b78;--pearl-glass:rgba(250,255,255,.44);--pearl-edge:rgba(255,255,255,.82);--pearl-shadow:0 14px 40px rgba(43,90,104,.12),inset 0 1px 0 rgba(255,255,255,.9)}
+:root{--pearl-ink:#163b48;--pearl-muted:#496674;--pearl-accent:#086b78;--pearl-glass:rgba(250,255,255,.28);--pearl-edge:rgba(255,255,255,.82);--pearl-shadow:0 14px 40px rgba(43,90,104,.12),inset 0 1px 0 rgba(255,255,255,.9)}
 body{background:#d9eef0;color:var(--pearl-ink)}
 .v4-shell.v3-shell,.v4-shell.v3-login,.mini-shell,.checkout-shell{position:relative;isolation:isolate;background:#d9eef0;color:var(--pearl-ink)}
 .v4-shell::before,.mini-shell::before,.checkout-shell::before{content:"";position:fixed;inset:0;height:100vh;height:100lvh;z-index:0;pointer-events:none;background:#d9eef0 url('/backgrounds/pearl-aqua.jpg') center center/cover no-repeat}
@@ -14,7 +14,7 @@ body{background:#d9eef0;color:var(--pearl-ink)}
  backdrop-filter:blur(16px) saturate(125%);-webkit-backdrop-filter:blur(16px) saturate(125%);
 }
 .v6-shell .v3-header{background:rgba(243,253,255,.26);border-color:var(--pearl-edge);box-shadow:0 8px 28px rgba(43,90,104,.06)}
-.v6-shell .admin-tabs,.v6-shell .v3-booking-tabs,.mini-nav{background:rgba(244,253,255,.40);border-color:var(--pearl-edge);box-shadow:var(--pearl-shadow);backdrop-filter:blur(24px) saturate(130%);-webkit-backdrop-filter:blur(24px) saturate(130%)}
+.v6-shell .admin-tabs,.v6-shell .v3-booking-tabs,.mini-nav{background:rgba(244,253,255,.29);border-color:var(--pearl-edge);box-shadow:var(--pearl-shadow);backdrop-filter:blur(24px) saturate(130%);-webkit-backdrop-filter:blur(24px) saturate(130%)}
 .v6-shell .admin-tabs button,.v6-shell .v3-booking-tabs button,.mini-nav button{color:var(--pearl-muted)}
 .v6-shell .admin-tabs button.active,.v6-shell .v3-booking-tabs button.active,.mini-nav button.selected{background:rgba(174,225,231,.66);color:#084e5b;box-shadow:inset 0 1px 0 #ffffffb3,0 4px 16px #4c95a118}
 .v6-shell .v3-mark,.v6-shell .admin-kicker,.v6-shell .v3-eyebrow,.v6-shell .v3-section-head button,.mini-section-head button{color:var(--pearl-accent)!important}
@@ -62,4 +62,28 @@ body{background:#d9eef0;color:var(--pearl-ink)}
 }
 @media(prefers-reduced-transparency:reduce){
  .v6-shell .admin-panel,.v6-shell .v3-glass,.v6-shell .v3-main .bg-white:not(button),.v6-shell .v3-main .bg-slate-50:not(button),.v6-shell .admin-tabs,.mini-feature,.mini-history-row,.mini-plan,.mini-nav,.checkout-card,.plan-card{background:#f4fcfd;backdrop-filter:none;-webkit-backdrop-filter:none}
+}
+
+/* Short, single-pass motion. No looping wallpaper or layout animation. */
+.v6-shell button,.mini-shell button,.checkout-shell button,.checkout-shell .checkout-primary{
+ transition:transform 150ms cubic-bezier(.2,.75,.25,1),background-color 180ms ease,border-color 180ms ease,box-shadow 180ms ease,color 180ms ease;
+ -webkit-tap-highlight-color:transparent;
+}
+.v6-shell button:not(:disabled):active,.mini-shell button:not(:disabled):active,
+.checkout-shell button:not(:disabled):active,.checkout-shell a.checkout-primary:active{
+ transform:translateY(1px) scale(.975);
+}
+.v6-shell .admin-tabs button.active,.mini-nav button.selected{
+ box-shadow:inset 0 1px 0 #ffffffc7,0 3px 14px #39879724;
+}
+.pearl-option-enter,.mini-faq details[open]>p{animation:pearl-option-in 190ms cubic-bezier(.2,.75,.25,1)}
+@keyframes pearl-option-in{from{opacity:.55;transform:translateY(-5px)}to{opacity:1;transform:translateY(0)}}
+@media(hover:hover) and (pointer:fine){
+ .v6-shell button:not(:disabled):hover,.mini-shell button:not(:disabled):hover,.checkout-shell button:not(:disabled):hover{transform:translateY(-1px)}
+ .v6-shell button:not(:disabled):active,.mini-shell button:not(:disabled):active,.checkout-shell button:not(:disabled):active{transform:translateY(1px) scale(.975)}
+}
+@media(prefers-reduced-motion:reduce){
+ .v6-shell button,.mini-shell button,.checkout-shell button,.checkout-shell .checkout-primary{transition:none!important;transform:none!important}
+ .pearl-option-enter,.mini-faq details[open]>p{animation:none!important}
+ .mini-progress span,.booking-time-track span{transition:none}
 }

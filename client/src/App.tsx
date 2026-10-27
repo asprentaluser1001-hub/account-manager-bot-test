@@ -1,3 +1,4 @@
+import {useTabMotion} from './useTabMotion';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import OrdersPanel from './OrdersPanel';
 import BotSettingsPanel from './BotSettingsPanel';
@@ -251,7 +252,7 @@ function AutoResetPicker({
   ];
 
   return (
-    <div className="mt-3 bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-3">
+    <div className="pearl-option-enter mt-3 bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-3">
       {/* Quick presets */}
       <div className="flex flex-wrap gap-2">
         {presets.map((p) => (
@@ -317,6 +318,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
   const requestedTab=new URLSearchParams(window.location.search).get('tab');
   type Tab = 'overview' | 'accounts' | 'manual' | 'finance' | 'history' | 'settings';
   const [activeTab, setActiveTab] = useState<Tab>(()=>requestedTab==='approvals'?'history':['overview','accounts','manual','finance','history','settings'].includes(String(requestedTab))?requestedTab as Tab:'overview');
+  const tabContentRef = useTabMotion<HTMLElement>(activeTab);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -594,7 +596,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
         </div>
       </header>
 
-      <main className="v3-main max-w-3xl mx-auto px-4 sm:px-5 py-6">
+      <main ref={tabContentRef} className="v3-main max-w-3xl mx-auto px-4 sm:px-5 py-6">
         {pushMessage&&<div className={`mb-4 rounded-xl border px-3.5 py-2.5 text-sm ${pushState==='on'?'border-emerald-200 bg-emerald-50 text-emerald-700':'border-amber-200 bg-amber-50 text-amber-800'}`}>{pushMessage}</div>}
         {(['manual','history'] as const).includes(activeTab as 'manual'|'history') && <nav className="v3-booking-tabs" aria-label="Booking tools">{([['manual','Manual booking'],['history','History']] as const).map(([id,label])=><button key={id} onClick={()=>setActiveTab(id)} className={activeTab===id?'active':''} aria-current={activeTab===id?'page':undefined}>{label}</button>)}</nav>}
         {activeTab === 'overview' ? <OverviewPanel token={token} accounts={accounts} onNavigate={setActiveTab} /> : activeTab === 'settings' ? (
@@ -630,7 +632,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
 
         {/* Add form */}
         {showAdd && (
-          <div className="mb-5 p-4 bg-white rounded-2xl border border-slate-200 shadow-sm space-y-3">
+          <div className="pearl-option-enter mb-5 p-4 bg-white rounded-2xl border border-slate-200 shadow-sm space-y-3">
             <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Account name (e.g. Account 1)" className={inputCls} />
             <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email / Username" className={inputCls} />
             <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" className={inputCls} />
@@ -839,7 +841,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
                         {recoveryId===acc.id&&<AccountRecovery key={acc.id} id={acc.id} name={acc.name} candidate={acc.reset_candidate_password} token={token} onChanged={load} onClose={()=>setRecoveryId(null)}/>}
                         {/* Sold-hours picker */}
                         {soldOpenId === acc.id && !acc.sold && (
-                          <div className="mt-2 bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-3">
+                          <div className="pearl-option-enter mt-2 bg-slate-50 border border-slate-200 rounded-xl p-3 space-y-3">
                             <p className="text-xs text-slate-500">Mark sold for how long?</p>
                             <div className="flex flex-wrap gap-2">
                               {[1, 2, 4, 6, 12, 24].map((h) => (
