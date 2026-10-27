@@ -164,7 +164,7 @@ body{background:#d9eef0;color:var(--pearl-ink)}
  display:none;position:fixed;left:0;right:0;bottom:0;
  height:var(--bottom-blur-height,calc(110px + env(safe-area-inset-bottom)));z-index:5;
  pointer-events:none;border:0;border-radius:0;
- background:linear-gradient(to top,rgba(232,249,252,.94),rgba(239,252,254,.80) 65%,rgba(243,253,255,0));
+ background:linear-gradient(to top,rgba(232,249,252,.12),rgba(239,252,254,.03) 65%,rgba(243,253,255,0));
  backdrop-filter:blur(38px) saturate(125%);-webkit-backdrop-filter:blur(38px) saturate(125%);
  mask-image:linear-gradient(to bottom,transparent,#000 26%,#000);
  -webkit-mask-image:linear-gradient(to bottom,transparent,#000 26%,#000);
