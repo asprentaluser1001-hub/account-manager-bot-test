@@ -158,3 +158,34 @@ body{background:#d9eef0;color:var(--pearl-ink)}
  .v6-shell .admin-secondary,.v6-shell button.bg-white,.v6-shell button.bg-slate-100,.mini-extend{background:#dfF1f6;color:#104c60;border-color:#8cb7c4;backdrop-filter:none;-webkit-backdrop-filter:none}
  .v6-shell .admin-tabs.pearl-slider::before,.mini-nav.pearl-slider::before{background:#c6e7ef;border:1px solid #92bfcc}
 }
+
+/* V6.2.1: edge-to-edge bottom blur, fading upward; no navigation dock. */
+.pearl-bottom-blur{
+ display:none;position:fixed;left:0;right:0;bottom:0;
+ height:calc(176px + env(safe-area-inset-bottom));z-index:5;
+ pointer-events:none;border:0;border-radius:0;
+ background:linear-gradient(to top,rgba(231,248,251,.72),rgba(243,253,255,.22) 70%,rgba(243,253,255,0));
+ backdrop-filter:blur(25px) saturate(135%);-webkit-backdrop-filter:blur(25px) saturate(135%);
+ mask-image:linear-gradient(to bottom,transparent,rgba(0,0,0,.35) 30%,#000 78%);
+ -webkit-mask-image:linear-gradient(to bottom,transparent,rgba(0,0,0,.35) 30%,#000 78%);
+}
+.mini-shell>.pearl-bottom-blur{display:block}
+.mini-nav.pearl-slider{
+ background:transparent;border:0;border-radius:0;box-shadow:none;
+ backdrop-filter:none;-webkit-backdrop-filter:none;
+ width:min(510px,100%);padding:8px 16px;bottom:calc(12px + env(safe-area-inset-bottom));
+}
+@media(max-width:640px){
+ .v6-shell>.pearl-bottom-blur{display:block}
+ .v6-shell .v3-header>div:last-child{bottom:calc(12px + env(safe-area-inset-bottom));padding-inline:16px;background:transparent}
+ .v6-shell .admin-tabs.pearl-slider{
+  background:transparent;border:0;border-radius:0;box-shadow:none;
+  backdrop-filter:none;-webkit-backdrop-filter:none;
+ }
+}
+@supports not ((mask-image:linear-gradient(#000,transparent)) or (-webkit-mask-image:linear-gradient(#000,transparent))){
+ .pearl-bottom-blur{backdrop-filter:none;-webkit-backdrop-filter:none;background:linear-gradient(to top,#e9f8fb,rgba(233,248,251,.8) 35%,transparent)}
+}
+@media(prefers-reduced-transparency:reduce){
+ .pearl-bottom-blur{background:#eef9fb;backdrop-filter:none;-webkit-backdrop-filter:none;mask-image:none;-webkit-mask-image:none}
+}

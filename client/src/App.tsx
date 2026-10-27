@@ -597,6 +597,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
         </div>
       </header>
 
+      <div className="pearl-bottom-blur" aria-hidden="true" />
       <main className="v3-main max-w-3xl mx-auto px-4 sm:px-5 py-6">
         {pushMessage&&<div className={`mb-4 rounded-xl border px-3.5 py-2.5 text-sm ${pushState==='on'?'border-emerald-200 bg-emerald-50 text-emerald-700':'border-amber-200 bg-amber-50 text-amber-800'}`}>{pushMessage}</div>}
         {(['manual','history'] as const).includes(activeTab as 'manual'|'history') && <nav ref={bookingNavRef} className="v3-booking-tabs pearl-slider" aria-label="Booking tools">{([['manual','Manual booking'],['history','History']] as const).map(([id,label])=><button key={id} onClick={()=>setActiveTab(id)} className={activeTab===id?'active':''} aria-current={activeTab===id?'page':undefined}>{label}</button>)}</nav>}
