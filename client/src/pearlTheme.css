@@ -1,0 +1,65 @@
+/* Pearl Aqua: the supplied artwork, shared by admin, mini app and checkout. */
+:root{--pearl-ink:#163b48;--pearl-muted:#496674;--pearl-accent:#086b78;--pearl-glass:rgba(250,255,255,.44);--pearl-edge:rgba(255,255,255,.82);--pearl-shadow:0 14px 40px rgba(43,90,104,.12),inset 0 1px 0 rgba(255,255,255,.9)}
+body{background:#d9eef0;color:var(--pearl-ink)}
+.v4-shell.v3-shell,.v4-shell.v3-login,.mini-shell,.checkout-shell{position:relative;isolation:isolate;background:#d9eef0;color:var(--pearl-ink)}
+.v4-shell::before,.mini-shell::before,.checkout-shell::before{content:"";position:fixed;inset:0;height:100vh;height:100lvh;z-index:0;pointer-events:none;background:#d9eef0 url('/backgrounds/pearl-aqua.jpg') center center/cover no-repeat}
+.mini-shell::after{background:linear-gradient(180deg,rgba(239,252,255,.08),rgba(255,250,241,.13));z-index:1}
+.checkout-shell>.checkout-header,.checkout-shell>.checkout-main,.checkout-shell>.checkout-footer{position:relative;z-index:1}
+.v6-shell{--v3-ink:var(--pearl-ink);--v3-green:var(--pearl-accent);--v3-line:var(--pearl-edge)}
+.v6-shell .admin-panel,.v6-shell .v3-overview-card,.v6-shell .v3-glass,.v6-shell .v3-metric,.v6-shell .v3-control-card,
+.v6-shell .v3-main .bg-white:not(button):not(input):not(select):not(textarea),
+.v6-shell .v3-main .bg-slate-50:not(button):not(input):not(select):not(textarea),
+.mini-feature,.mini-history-row,.mini-plan,.mini-availability,.checkout-card,.plan-card{
+ background:var(--pearl-glass);border:1px solid var(--pearl-edge);box-shadow:var(--pearl-shadow);
+ backdrop-filter:blur(16px) saturate(125%);-webkit-backdrop-filter:blur(16px) saturate(125%);
+}
+.v6-shell .v3-header{background:rgba(243,253,255,.26);border-color:var(--pearl-edge);box-shadow:0 8px 28px rgba(43,90,104,.06)}
+.v6-shell .admin-tabs,.v6-shell .v3-booking-tabs,.mini-nav{background:rgba(244,253,255,.40);border-color:var(--pearl-edge);box-shadow:var(--pearl-shadow);backdrop-filter:blur(24px) saturate(130%);-webkit-backdrop-filter:blur(24px) saturate(130%)}
+.v6-shell .admin-tabs button,.v6-shell .v3-booking-tabs button,.mini-nav button{color:var(--pearl-muted)}
+.v6-shell .admin-tabs button.active,.v6-shell .v3-booking-tabs button.active,.mini-nav button.selected{background:rgba(174,225,231,.66);color:#084e5b;box-shadow:inset 0 1px 0 #ffffffb3,0 4px 16px #4c95a118}
+.v6-shell .v3-mark,.v6-shell .admin-kicker,.v6-shell .v3-eyebrow,.v6-shell .v3-section-head button,.mini-section-head button{color:var(--pearl-accent)!important}
+.v6-shell .admin-primary,.v6-shell button.bg-slate-900,.v6-shell .v3-manage,.mini-primary,.checkout-primary{background:linear-gradient(135deg,#0c7784,#17576f);border-color:#126b7a;color:#fff;box-shadow:0 8px 22px rgba(17,100,119,.20)}
+.v6-shell .admin-primary:hover,.v6-shell button.bg-slate-900:hover,.v6-shell .v3-manage:hover,.mini-primary:hover,.checkout-primary:hover{background:linear-gradient(135deg,#08616f,#15495f)}
+.v6-shell .admin-secondary{background:rgba(255,255,255,.64);border-color:#ffffffd9;color:var(--pearl-ink)}
+.v6-shell input:not([type=checkbox]):not([type=radio]),.v6-shell select,.v6-shell textarea{background:rgba(255,255,255,.72);border-color:rgba(102,153,166,.42);color:var(--pearl-ink)}
+.v6-shell .v3-metric strong,.v6-shell h1,.v6-shell h2,.v6-shell h3,.mini-shell h1,.mini-shell h2,.mini-shell h3{color:var(--pearl-ink)}
+.v6-shell .v3-metric-icon,.mini-clock,.mini-history-icon{background:rgba(179,226,233,.60);color:#0b6676}
+.v6-shell .v3-chart-track i{background:#8bc7d3}.v6-shell .v3-chart-day:nth-last-child(4) .v3-chart-track i{background:var(--pearl-accent)}
+.v6-shell .bg-violet-500\/85{background:#288ca4}.v6-shell .bg-violet-50{background:rgba(206,236,244,.76)}.v6-shell .text-violet-700{color:#155c74}
+.v6-shell .v3-overview-heading p:last-child,.v6-shell .v3-section-head span,.v6-shell .v3-booking-info small{color:var(--pearl-muted)}
+.v6-shell .text-slate-400,.v6-shell .text-slate-500{color:#526b78}
+.v6-shell .v3-today{background:rgba(255,255,255,.56);border-color:#fff;color:var(--pearl-muted)}
+.mini-inner{background:none}.mini-top small,.mini-intro p,.mini-page>p,.mini-hint,.mini-active p,.mini-active h3,.mini-history-row small,.mini-empty p,.mini-page .mini-feature p,.mini-availability small{color:var(--pearl-muted)}
+.mini-logo{border-color:var(--pearl-accent);color:var(--pearl-accent)}.mini-top-dot{color:var(--pearl-accent)}
+.mini-close{background:rgba(255,255,255,.65);color:var(--pearl-ink);border:1px solid var(--pearl-edge)}
+.mini-extend{background:rgba(187,231,236,.64);color:#0a5665}.mini-plan{color:var(--pearl-ink)}
+.mini-feature select{background:rgba(255,255,255,.72);color:var(--pearl-ink);border:1px solid #8db7c3;font-size:16px}
+.mini-progress{background:rgba(122,174,187,.25)}.mini-progress span{background:linear-gradient(90deg,#64c1cc,#14657d)}
+.mini-credentials,.mini-slot{border-color:rgba(90,140,155,.22)}.mini-faq details{border-color:rgba(90,140,155,.22)}
+/* Checkout keeps clear payment/error states while matching the shared artwork. */
+.checkout-shell .checkout-header{background:rgba(247,254,255,.46);border-color:var(--pearl-edge);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+.checkout-shell .checkout-brand{color:var(--pearl-ink)}.checkout-shell .checkout-brand>span{background:linear-gradient(135deg,#168396,#1a576f);color:#fff}
+.checkout-shell .checkout-secure{color:#275b65;background:rgba(230,248,249,.66);border-color:#ffffffb8}
+.checkout-shell .checkout-kicker{color:#236d7d}.checkout-shell .checkout-intro h1,.checkout-shell .status-card h2,.checkout-shell .plan-card strong,.checkout-shell .order-total strong,.checkout-shell .amount-due strong{color:var(--pearl-ink)}
+.checkout-shell .checkout-intro p,.checkout-shell .plan-card span,.checkout-shell .checkout-form label,.checkout-shell .proof-form label,.checkout-shell .order-total,.checkout-shell .order-id,.checkout-shell .amount-due span,.checkout-shell .status-card>p{color:var(--pearl-muted)}
+.checkout-shell .checkout-note{color:#42616e!important}.checkout-shell .checkout-footer{color:#3c606f}
+.checkout-shell .plan-card.selected{background:rgba(175,225,233,.62);border-color:#3b8b9d;box-shadow:inset 0 0 0 1px #3b8b9d,0 8px 24px #387d8c20}
+.checkout-shell .plan-card em{background:rgba(255,255,255,.64);color:#0d6477}
+.checkout-shell .checkout-form input,.checkout-shell .proof-form input,.checkout-shell .payment-link-fallback{background:rgba(255,255,255,.73);color:var(--pearl-ink);border-color:#87acb9}
+.checkout-shell input::placeholder{color:#617f8a}.checkout-shell .checkout-form input:focus,.checkout-shell .proof-form input:focus{border-color:#14798d;box-shadow:0 0 0 3px #6ebcc92e}
+.checkout-shell .order-total,.checkout-shell .proof-form{border-color:#7ba9b740}.checkout-shell .order-id strong{color:#264c5c}
+.checkout-shell .upi-details,.checkout-shell .credential,.checkout-shell .status-pulse{background:rgba(240,252,254,.66);border-color:#ffffffd9;color:var(--pearl-ink)}
+.checkout-shell .upi-details span,.checkout-shell .credential span{color:#486d7b}.checkout-shell .upi-details button,.checkout-shell .credential button{background:rgba(163,215,226,.61);color:#124b60}
+.checkout-shell .checkout-link{color:#155e75}.checkout-shell .upload-box{background:rgba(245,253,255,.66);border-color:#679cac}.checkout-shell .upload-box b{color:var(--pearl-ink)}
+.checkout-shell .status-icon{background:#def3e9;color:#176a49}.checkout-shell .status-icon.waiting{background:#fff1ce;color:#855913}.checkout-shell .status-icon.rejected{background:#ffe6e8;color:#a02b42}
+.checkout-shell .checkout-alert.error{background:rgba(255,239,241,.94);border-color:#e9a0ae;color:#8e233a}
+.checkout-shell .availability{background:rgba(255,255,255,.64);border:1px solid #ffffffd4}.checkout-shell .availability.available{color:#176847}.checkout-shell .availability.unavailable{color:#8a4e20}
+.checkout-shell .booking-time-label{color:#315967}.checkout-shell .booking-time-track{background:#94bdc747}.checkout-shell .booking-time-track span{background:linear-gradient(90deg,#65c9d0,#1b718d)}
+.v6-shell button:focus-visible,.mini-shell button:focus-visible,.checkout-shell button:focus-visible,.checkout-shell a:focus-visible{outline:2px solid #076d83;outline-offset:3px}
+@media(max-width:640px){.v6-shell .v3-header{background:transparent;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none}}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+ .v6-shell .admin-panel,.v6-shell .v3-glass,.v6-shell .v3-main .bg-white:not(button),.v6-shell .v3-main .bg-slate-50:not(button),.mini-feature,.mini-history-row,.mini-plan,.mini-nav,.checkout-card,.plan-card{background:rgba(245,253,255,.94)}
+}
+@media(prefers-reduced-transparency:reduce){
+ .v6-shell .admin-panel,.v6-shell .v3-glass,.v6-shell .v3-main .bg-white:not(button),.v6-shell .v3-main .bg-slate-50:not(button),.v6-shell .admin-tabs,.mini-feature,.mini-history-row,.mini-plan,.mini-nav,.checkout-card,.plan-card{background:#f4fcfd;backdrop-filter:none;-webkit-backdrop-filter:none}
+}
