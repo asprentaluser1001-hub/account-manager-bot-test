@@ -1,3 +1,6 @@
+import {Accordion,AccordionGroup} from './Accordion';
+import AppearanceSettings from './AppearanceSettings';
+import {useAppearance} from './appearance';
 import {useSlidingIndicator} from './useSlidingIndicator';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import OrdersPanel from './OrdersPanel';
@@ -50,6 +53,7 @@ function vapidBytes(value:string):Uint8Array<ArrayBuffer>{
 }
 
 export default function App() {
+  useAppearance();
   const preview = usePreviewMode();
   useEffect(() => {
     document.documentElement.classList.toggle('preview-mode', preview);
@@ -602,12 +606,17 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
         {pushMessage&&<div className={`mb-4 rounded-xl border px-3.5 py-2.5 text-sm ${pushState==='on'?'border-emerald-200 bg-emerald-50 text-emerald-700':'border-amber-200 bg-amber-50 text-amber-800'}`}>{pushMessage}</div>}
         {(['manual','history'] as const).includes(activeTab as 'manual'|'history') && <nav ref={bookingNavRef} className="v3-booking-tabs pearl-slider" aria-label="Booking tools">{([['manual','Manual booking'],['history','History']] as const).map(([id,label])=><button key={id} onClick={()=>setActiveTab(id)} className={activeTab===id?'active':''} aria-current={activeTab===id?'page':undefined}>{label}</button>)}</nav>}
         {activeTab === 'overview' ? <OverviewPanel token={token} accounts={accounts} onNavigate={setActiveTab} /> : activeTab === 'settings' ? (
-          <>
-            <section className="admin-panel" aria-label="Notification settings"><h2 className="font-heading text-xl font-bold text-slate-900">Notification settings</h2><p className="text-sm text-slate-600 mt-1 mb-4">Get booking alerts on this device.</p><button onClick={enablePush} disabled={pushState==='checking'||pushState==='unsupported'} className="admin-secondary" type="button">{pushState==='on'?'● Alerts on':pushState==='checking'?'Checking alerts…':pushState==='unsupported'?'Notifications unavailable':'🔔 Enable alerts'}</button></section>
-            <PaymentSettingsPanel token={token} />
-            <BotSettingsPanel token={token} />
-            <SettingsPanel token={token} onLogout={onLogout} onBack={() => setActiveTab('accounts')} />
-          </>
+          <AccordionGroup>
+            <Accordion title="Notifications" description="Booking alerts on this device">
+              <section className="admin-panel" aria-label="Notification settings"><p className="text-sm text-slate-600 mb-4">Get booking alerts on this device.</p><button onClick={enablePush} disabled={pushState==='checking'||pushState==='unsupported'} className="admin-secondary" type="button">{pushState==='on'?'● Alerts on':pushState==='checking'?'Checking alerts…':pushState==='unsupported'?'Notifications unavailable':'🔔 Enable alerts'}</button></section>
+            </Accordion>
+            <Accordion title="Wallpaper" description="Upload a wallpaper or restore Pearl"><AppearanceSettings token={token} mode="wallpaper" /></Accordion>
+            <Accordion title="Accent theme" description="Choose colors for buttons and icons"><AppearanceSettings token={token} mode="accent" /></Accordion>
+            <Accordion title="Payments" description="Checkout and payment options"><PaymentSettingsPanel token={token} /></Accordion>
+            <Accordion title="Bot settings" description="Mini app link, support and proof media"><BotSettingsPanel token={token} /></Accordion>
+            <Accordion title="Admin account" description="Password and app version"><SettingsPanel token={token} onLogout={onLogout} onBack={() => setActiveTab('accounts')} /></Accordion>
+          </AccordionGroup>
+
         ) : (
         <>
         <div className={activeTab === 'accounts' ? '' : 'hidden'}>
@@ -894,10 +903,12 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
         {activeTab === 'finance' && <><OrdersPanel token={token} view="finance" /><V3Reports token={token} /></>}
 
         {/* ─── Reset History ─────────────────────────────────── */}
-        {activeTab === 'history' && <>
-        <BookingControls token={token} onChanged={load} />
-        <OrdersPanel token={token} view="history" onBookingChanged={load} />
-        <div className="mt-9">
+        {activeTab === 'history' && <AccordionGroup>
+        <Accordion title="Booking controls" description="Active bookings, extensions and migration"><BookingControls token={token} onChanged={load} view="bookings" /></Accordion>
+        <Accordion title="Refund tracking" description="Track refund status"><BookingControls token={token} onChanged={load} view="refunds" /></Accordion>
+        <Accordion title="Booking history" description="Customer orders and recovery approvals"><OrdersPanel token={token} view="history" onBookingChanged={load} /></Accordion>
+        <Accordion title="Password reset history" description="Reset attempts and results">
+        <div>
           <div className="flex items-center gap-2 mb-1">
             <Icon path={ICONS.history} className="w-5 h-5 text-slate-500" />
             <h2 className="font-heading text-xl font-bold text-slate-900">Password reset history</h2>
@@ -972,7 +983,8 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
             </button>
           </div>
         </div>
-        </>}
+        </Accordion>
+        </AccordionGroup>}
         </>
         )}
       </main>

@@ -1,5 +1,9 @@
 # Account Manager + Telegram booking sandbox
 
+## v7 appearance and expandable sections
+
+More now includes expandable Notifications, Wallpaper, Accent theme, Payments, Bot settings and Admin account sections. Upload one wallpaper and choose an accent color for admin, mini app and checkout; restore the original Pearl wallpaper or accent independently. The existing Manual booking / History tabs stay in place, with expandable sections only inside History. See [V7_APPEARANCE.md](V7_APPEARANCE.md) for persistence, deployment and verification details. The default remains Pearl Aqua; the separate Halloween release is not enabled.
+
 **This repository is a test project.** It uses sample accounts and simulated payment claims; it does not collect money or reset external accounts. Follow [TESTING.md](TESTING.md) for the correct setup.
 
 ## Quick start on a computer or test VPS
