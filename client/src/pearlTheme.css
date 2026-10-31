@@ -2,7 +2,7 @@
 :root{--pearl-ink:#163b48;--pearl-muted:#496674;--pearl-accent:#086b78;--pearl-glass:rgba(250,255,255,.18);--pearl-edge:rgba(255,255,255,.82);--pearl-shadow:0 14px 40px rgba(43,90,104,.12),inset 0 1px 0 rgba(255,255,255,.9)}
 body{background:#d9eef0;color:var(--pearl-ink)}
 .v4-shell.v3-shell,.v4-shell.v3-login,.mini-shell,.checkout-shell{position:relative;isolation:isolate;background:#d9eef0;color:var(--pearl-ink)}
-.v4-shell::before,.mini-shell::before,.checkout-shell::before{content:"";position:fixed;inset:0;height:100vh;height:100lvh;z-index:0;pointer-events:none;background:#d9eef0 linear-gradient(rgba(239,252,255,.62),rgba(239,252,255,.62)),url('/backgrounds/halloween-mobile.webp') center center/cover no-repeat}
+.v4-shell::before,.mini-shell::before,.checkout-shell::before{content:"";position:fixed;inset:0;height:100vh;height:100lvh;z-index:0;pointer-events:none;background:linear-gradient(rgba(239,252,255,.62),rgba(239,252,255,.62)),#d9eef0 url('/backgrounds/halloween-mobile.webp') center center/cover no-repeat}
 .mini-shell::after{background:linear-gradient(180deg,rgba(239,252,255,.08),rgba(255,250,241,.13));z-index:1}
 .checkout-shell>.checkout-header,.checkout-shell>.checkout-main,.checkout-shell>.checkout-footer{position:relative;z-index:1}
 .v6-shell{--v3-ink:var(--pearl-ink);--v3-green:var(--pearl-accent);--v3-line:var(--pearl-edge)}
