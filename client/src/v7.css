@@ -49,9 +49,18 @@ html[data-custom-accent=true] :is(.v6-shell button,.mini-shell button,.checkout-
 /* Uploaded wallpapers replace only the decorative layer, without a pale wash. */
 html[data-custom-wallpaper=true] :is(.v4-shell,.mini-shell,.checkout-shell)::before{background-image:var(--app-wallpaper);background-position:center;background-size:cover;background-repeat:no-repeat;background-color:#15212a}
 html[data-custom-wallpaper=true] .mini-shell::after{background:none}
-html[data-custom-wallpaper=true]{--pearl-glass:rgba(250,255,255,.72)}
 html[data-custom-wallpaper=true] :is(.v6-shell .v3-header h1,.mini-top strong,.mini-intro h1,.mini-page>h1,.v6-shell .v3-overview-heading h2,.checkout-intro h1){color:#fff;text-shadow:0 1px 4px #000c}
 html[data-custom-wallpaper=true] :is(.v6-shell .v3-header p,.mini-top small,.mini-intro p,.mini-page>p,.v6-shell .v3-overview-heading p:last-child,.checkout-intro>p,.checkout-footer){color:#fff;text-shadow:0 1px 4px #000c}
 @media(prefers-reduced-motion:reduce){.v7-accordion-body,.v7-accordion-trigger svg{transition:none!important}}
 @media(prefers-reduced-transparency:reduce){.v7-accordion{background:#f4fcfd;backdrop-filter:none;-webkit-backdrop-filter:none}}
 @supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.v7-accordion{background:#f4fcfd}}
+
+/* Dark artwork needs light foregrounds, not a more opaque glass material. */
+html[data-wallpaper-dark=true]{--pearl-ink:#f8fafc;--pearl-muted:#e2e8f0}
+html[data-wallpaper-dark=true] :is(.v6-shell .text-slate-900,.v6-shell .text-slate-800,.v6-shell .text-slate-700,.v6-shell .text-slate-600,.v6-shell .text-slate-500,.v6-shell .text-slate-400,.v6-shell .v3-metric strong,.v6-shell .v3-remaining){color:#f1f5f9}
+html[data-wallpaper-dark=true] :is(.mini-availability small,.mini-active p,.mini-active h3,.v3-empty,.v3-section-head span){color:#e2e8f0}
+html[data-wallpaper-dark=true] .mini-availability.is-available strong{color:#86efac}
+html[data-wallpaper-dark=true] :is(.v6-shell input,.v6-shell select,.v6-shell textarea,.mini-feature select,.checkout-shell .checkout-form input,.checkout-shell .proof-form input){color:#163b48}
+html[data-wallpaper-dark=true] :is(.v7-color-label input[type=text],.v7-upload-label input){color:#163b48}
+html[data-wallpaper-dark=true] :is(.v6-shell .admin-secondary,.mini-extend){color:#163b48}
+html[data-wallpaper-dark=true][data-custom-accent=true] :is(.v6-shell .admin-secondary,.mini-extend){color:var(--app-accent-ink)}

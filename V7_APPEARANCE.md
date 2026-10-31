@@ -20,4 +20,8 @@ Run `node --test tests/appearance.integration.mjs` from server to verify public 
 
 After both builds, run `node tests/appearance.browser.cjs` from server for the mobile UI checks. It uses an isolated temporary database and sample data, uploads an existing Pearl image, verifies mini app synchronization and restoration, and checks expandable sections and keyboard/reduced-motion behavior. It never contacts Telegram or a payment service. Use `CHROMIUM_PATH` to select an installed Chromium binary when needed; `APPEARANCE_SCREENSHOT_DIR` sets the output directory for Settings and History preview screenshots.
 
-Version: 7.0.0. Build: 2026.10.31.2.
+Version: 7.0.1. Build: 2026.10.31.3.
+
+## v7.0.1 glass correction
+
+Uploading a wallpaper now retains the same Pearl glass opacity and blur as the default design; it no longer raises panel opacity from 18% to 72%. The bottom navigation uses an untinted 14px blur with a longer fade instead of the previous 38px blur, so wallpaper and scrolling content remain visible beneath it. Text adapts to the brightness of uploaded artwork instead of making the glass opaque. Existing reduced-transparency accessibility settings still take precedence. No booking, payment, upload-storage or authentication behavior changes.

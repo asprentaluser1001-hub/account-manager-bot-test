@@ -4,6 +4,23 @@ export type Appearance = {accentColor:string;wallpaperUrl:string|null;revision:s
 export const DEFAULT_ACCENT = '#086b78';
 const EVENT = 'appearance-updated';
 const CACHE = 'fr_appearance_v7';
+let analyzedWallpaper = '';
+function analyzeWallpaper(url:string) {
+  if(analyzedWallpaper===url)return;
+  analyzedWallpaper=url;
+  const image=new Image();
+  image.onload=()=>{
+    if(analyzedWallpaper!==url)return;
+    try{
+      const canvas=document.createElement('canvas');canvas.width=16;canvas.height=16;
+      const ctx=canvas.getContext('2d');if(!ctx)return;ctx.drawImage(image,0,0,16,16);
+      const pixels=ctx.getImageData(0,0,16,16).data;let luminance=0;
+      for(let i=0;i<pixels.length;i+=4)luminance+=.2126*pixels[i]+.7152*pixels[i+1]+.0722*pixels[i+2];
+      document.documentElement.dataset.wallpaperDark=String(luminance/(256*255)<.58);
+    }catch{/* Retain the existing foreground if the image cannot be sampled. */}
+  };
+  image.src=url;
+}
 
 function apply(value:Appearance) {
   if(!/^#[0-9a-f]{6}$/i.test(value.accentColor))return;
@@ -18,7 +35,8 @@ function apply(value:Appearance) {
   if(wallpaper&&/^\/api\/appearance\/wallpaper\?v=[a-z0-9-]+$/i.test(wallpaper)) {
     root.style.setProperty('--app-wallpaper',`url("${wallpaper}")`);
     root.dataset.customWallpaper='true';
-  } else {root.style.removeProperty('--app-wallpaper');delete root.dataset.customWallpaper;}
+    analyzeWallpaper(wallpaper);
+  } else {root.style.removeProperty('--app-wallpaper');delete root.dataset.customWallpaper;delete root.dataset.wallpaperDark;analyzedWallpaper='';}
 }
 export function publishAppearance(value:Appearance) {
   apply(value);
