@@ -1,3 +1,4 @@
+import {APP_VERSION,APP_EDITION} from './version';
 import {useSlidingIndicator} from './useSlidingIndicator';
 import {useCallback,useEffect,useState} from 'react';
 import './miniApp.css';
@@ -34,7 +35,7 @@ export default function MiniApp(){
  async function selectAdvancePlan(hours:number){setAdvanceHours(hours);try{const response=await fetch(`/api/miniapp/me?hours=${hours}`,{headers:{'X-Telegram-Init-Data':initData},cache:'no-store'});const body=await response.json();if(!response.ok)throw new Error(body.error);setSlots(body.slots)}catch(e){setError(e instanceof Error?e.message:'Could not check slots')}}
  const active=data?.active,progress=active?.startsAt?Math.max(0,Math.min(100,100*(Date.parse(active.expiresAt)-now)/(Date.parse(active.expiresAt)-Date.parse(active.startsAt)||1))):0,hasBooking=!!data?.recent.length,plans=Object.entries(data?.prices||{}).sort(([a],[b])=>Number(a)-Number(b));
  return <div className="mini-shell"><div className="mini-inner">
-  <header className="mini-top"><button aria-label="Close" onClick={()=>window.Telegram?.WebApp?.close()} className="mini-close">×</button><span className="mini-logo">F</span><div><strong>FlingRoulette</strong><small>Your bookings</small></div><span className="mini-top-dot" aria-hidden="true">•••</span></header>
+  <header className="mini-top"><button aria-label="Close" onClick={()=>window.Telegram?.WebApp?.close()} className="mini-close">×</button><span className="mini-logo">F</span><div><strong>FlingRoulette</strong><small>v{APP_VERSION} {APP_EDITION}</small></div><span className="mini-top-dot" aria-hidden="true">•••</span></header>
   {error&&<p className="mini-error" role="alert">{error}</p>}{notice&&<p className="mini-notice" role="status">{notice}</p>}
   {!data&&!error&&<p className="mini-loading">Loading your bookings…</p>}
   {data&&<div className="pearl-tab-content">
@@ -59,4 +60,3 @@ export default function MiniApp(){
 }
 function Availability({available}:{available:boolean}){return <div className={`mini-availability ${available?'is-available':'is-unavailable'}`} role="status"><span className="mini-availability-dot" aria-hidden="true"/><div><strong>{available?'Accounts available now':'No accounts available right now'}</strong><small>For new bookings · Refreshes automatically</small></div></div>}
 function HistoryRow({item}:{item:Row}){return <article className="mini-history-row"><span className="mini-history-icon" aria-hidden="true">◷</span><div><strong>{duration(item.hours)} access</strong><small>{date(item.createdAt)} · {item.id}</small></div><span className="mini-history-state">{item.status==='reserved'?'Reserved':item.status==='reservation_failed'?'Needs help':item.status==='payment_late'?'Needs help':item.status==='expired'?'Completed':item.status==='cancelled'?'Cancelled':item.status==='delivery_failed'?'Needs help':item.status==='reset_failed'?'Contact admin':'Active'}</span><b>₹{item.amount}</b></article>}
-
