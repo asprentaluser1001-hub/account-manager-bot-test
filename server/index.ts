@@ -17,6 +17,7 @@ import { startTestBot } from './lib/telegramBot';
 import { db } from './db';
 import {botSettingsRouter} from './routes/botSettings';
 import {checkoutRouter,paymentSettingsRouter} from './routes/checkout';
+import {appearanceRouter} from './routes/appearance';
 import {pushRouter} from './routes/push';
 import {v3OpsRouter} from './routes/v3Ops';
 import {miniAppRouter,miniAppAdminRouter} from './routes/miniApp';
@@ -37,6 +38,7 @@ const app = express();
 const PORT = Number(process.env.PORT || 4000);
 
 app.use(cors());
+app.use('/api/appearance', appearanceRouter);
 app.use('/api/bot-settings', botSettingsRouter);
 app.use('/api/checkout', checkoutRouter);
 app.use('/api/payment-settings', paymentSettingsRouter);

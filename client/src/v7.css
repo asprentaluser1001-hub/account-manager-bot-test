@@ -1,0 +1,57 @@
+/* Settings and History keep the Pearl surfaces and existing top navigation. */
+.v7-accordion-group{display:grid;gap:12px;margin-bottom:24px;align-content:start}
+.v7-accordion{min-width:0;border:1px solid var(--pearl-edge);border-radius:24px;background:var(--pearl-glass);box-shadow:var(--pearl-shadow);backdrop-filter:blur(16px) saturate(125%);-webkit-backdrop-filter:blur(16px) saturate(125%)}
+.v7-accordion-trigger{display:flex;align-items:center;justify-content:space-between;gap:16px;min-height:76px;width:100%;padding:18px 20px;text-align:left;border-radius:24px;color:var(--pearl-ink)}
+.v7-accordion-trigger strong{display:block;font-size:16px;line-height:1.3;font-weight:700}
+.v7-accordion-trigger small{display:block;color:var(--pearl-muted);font-size:12px;line-height:1.4;margin-top:4px;font-weight:400}
+.v7-accordion-trigger svg{flex-shrink:0;transition:transform 220ms ease}
+.v7-accordion-trigger svg.is-open{transform:rotate(180deg)}
+.v7-accordion-body{display:grid;grid-template-rows:0fr;visibility:hidden;transition:grid-template-rows 240ms ease,visibility 240ms}
+.v7-accordion-body.is-open{grid-template-rows:1fr;visibility:visible}
+.v7-accordion-clip{min-height:0;overflow:hidden}
+.v7-accordion-content{padding:0 16px 18px}
+.v7-accordion-content>.admin-panel,.v7-accordion-content>section,.v7-accordion-content>div{margin-bottom:0}
+.v7-accordion-content>.admin-panel,.v7-accordion-content>section{padding:16px}
+.v7-appearance-settings{display:grid;gap:16px;color:var(--pearl-ink);font-size:14px}
+.v7-appearance-settings>p{color:var(--pearl-muted);line-height:1.5}
+.v7-wallpaper-preview{width:100%;height:220px;object-fit:cover;object-position:center;border:1px solid var(--pearl-edge);border-radius:18px}
+.v7-upload-label{display:grid;gap:8px;font-weight:650}
+.v7-upload-label input{width:100%;font-size:14px;min-height:44px}
+.v7-upload-label input::file-selector-button{padding:10px 12px;border:1px solid var(--pearl-edge);border-radius:12px;margin-right:8px;background:#ffffffa3;color:var(--pearl-ink)}
+.v7-setting-actions{display:flex;flex-wrap:wrap;gap:8px}
+.v7-setting-actions button{min-height:44px}
+.v7-color-label{display:flex;flex-wrap:wrap;align-items:center;gap:12px;font-weight:650}
+.v7-color-label input[type=color]{width:54px;height:44px;padding:3px;border-radius:12px}
+.v7-color-label input[type=text]{width:110px;padding:10px;font:inherit;border:1px solid #87acb9;border-radius:12px}
+.v7-color-presets{display:flex;flex-wrap:wrap;gap:10px}
+.v7-color-presets button{width:44px;height:44px;border-radius:50%;border:2px solid #fff;color:white;text-shadow:0 1px 3px #000;font-weight:800}
+.v7-color-presets button[aria-pressed=true]{outline:2px solid var(--pearl-ink);outline-offset:2px}
+.v7-appearance-settings .v7-setting-error{color:#991b1b;background:#fff1f2;padding:12px;border-radius:12px}
+.v7-appearance-settings .v7-setting-notice{color:#166534;background:#f0fdf4;padding:12px;border-radius:12px}
+.v7-file-name{overflow-wrap:anywhere}
+
+/* Leave the built-in Pearl look untouched until the admin chooses an accent. */
+html[data-custom-accent=true]{--pearl-accent:var(--app-accent)}
+html[data-custom-accent=true] :is(.v6-shell .admin-primary,.v6-shell button.bg-slate-900,.v6-shell .v3-manage,.v6-shell button.bg-emerald-600,.v6-shell button.bg-blue-600,.mini-primary,.checkout-primary){background:linear-gradient(140deg,color-mix(in srgb,var(--app-accent) 14%,white),color-mix(in srgb,var(--app-accent) 32%,white));color:var(--app-accent-ink);border-color:color-mix(in srgb,var(--app-accent) 32%,white)}
+html[data-custom-accent=true] :is(.v6-shell .admin-primary,.v6-shell button.bg-slate-900,.v6-shell .v3-manage,.mini-primary,.checkout-primary):hover{background:color-mix(in srgb,var(--app-accent) 24%,white);color:var(--app-accent-ink)}
+html[data-custom-accent=true] :is(.v6-shell .admin-secondary,.v6-shell .v3-control-actions button,.v6-shell .v3-transfer button,.mini-extend){background:color-mix(in srgb,var(--app-accent) 13%,white);color:var(--app-accent-ink);border-color:color-mix(in srgb,var(--app-accent) 28%,white)}
+html[data-custom-accent=true] .pearl-slider::before{background:linear-gradient(145deg,#ffffffbf,color-mix(in srgb,var(--app-accent) 30%,transparent))}
+html[data-custom-accent=true] :is(.v6-shell .admin-tabs.pearl-slider,.mini-nav.pearl-slider)::before{background:radial-gradient(ellipse at center,color-mix(in srgb,var(--app-accent) 38%,transparent),transparent 85%)}
+html[data-custom-accent=true] :is(.v6-shell .admin-tabs.pearl-slider>button.active,.v6-shell .v3-booking-tabs.pearl-slider>button.active,.mini-nav.pearl-slider>button.selected){color:var(--app-accent-ink)}
+html[data-custom-accent=true] :is(.mini-logo,.mini-top-dot,.mini-section-head button){color:var(--app-accent-ink);border-color:var(--app-accent)}
+html[data-custom-accent=true] :is(.v6-shell .v3-metric-icon,.mini-clock,.mini-history-icon){color:var(--app-accent-ink);background:color-mix(in srgb,var(--app-accent) 22%,white)}
+html[data-custom-accent=true] :is(.mini-progress span,.checkout-shell .booking-time-track span){background:linear-gradient(90deg,color-mix(in srgb,var(--app-accent) 50%,white),var(--app-accent))}
+html[data-custom-accent=true] .checkout-shell .checkout-brand>span{background:var(--app-accent-ink)}
+html[data-custom-accent=true] .checkout-shell .plan-card.selected{background:color-mix(in srgb,var(--app-accent) 22%,white);border-color:var(--app-accent);box-shadow:inset 0 0 0 1px var(--app-accent)}
+html[data-custom-accent=true] .checkout-shell .plan-card em{color:var(--app-accent-ink)}
+html[data-custom-accent=true] :is(.v6-shell button,.mini-shell button,.checkout-shell button,.checkout-shell a):focus-visible{outline-color:var(--app-accent-ink)}
+
+/* Uploaded wallpapers replace only the decorative layer, without a pale wash. */
+html[data-custom-wallpaper=true] :is(.v4-shell,.mini-shell,.checkout-shell)::before{background-image:var(--app-wallpaper);background-position:center;background-size:cover;background-repeat:no-repeat;background-color:#15212a}
+html[data-custom-wallpaper=true] .mini-shell::after{background:none}
+html[data-custom-wallpaper=true]{--pearl-glass:rgba(250,255,255,.72)}
+html[data-custom-wallpaper=true] :is(.v6-shell .v3-header h1,.mini-top strong,.mini-intro h1,.mini-page>h1,.v6-shell .v3-overview-heading h2,.checkout-intro h1){color:#fff;text-shadow:0 1px 4px #000c}
+html[data-custom-wallpaper=true] :is(.v6-shell .v3-header p,.mini-top small,.mini-intro p,.mini-page>p,.v6-shell .v3-overview-heading p:last-child,.checkout-intro>p,.checkout-footer){color:#fff;text-shadow:0 1px 4px #000c}
+@media(prefers-reduced-motion:reduce){.v7-accordion-body,.v7-accordion-trigger svg{transition:none!important}}
+@media(prefers-reduced-transparency:reduce){.v7-accordion{background:#f4fcfd;backdrop-filter:none;-webkit-backdrop-filter:none}}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.v7-accordion{background:#f4fcfd}}

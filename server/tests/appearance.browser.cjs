@@ -1,0 +1,45 @@
+const fs=require('fs'),os=require('os'),path=require('path'),assert=require('assert/strict');
+const root=path.resolve(__dirname,'../..');
+const screenshotDir=process.env.APPEARANCE_SCREENSHOT_DIR||os.tmpdir();
+const requireServer=require('module').createRequire(root+'/server/package.json');
+const {chromium}=requireServer('playwright'),express=requireServer('express'),jwt=requireServer('jsonwebtoken');
+const dir=fs.mkdtempSync(path.join(os.tmpdir(),'v7-browser-'));process.env.DB_PATH=path.join(dir,'test.db');process.env.JWT_SECRET='v7-browser-test-secret-at-least-32-characters';process.env.ADMIN_PASSWORD='v7-browser-test-password';
+const {appearanceRouter}=require(root+'/server/dist/routes/appearance');const {db}=require(root+'/server/dist/db');
+(async()=>{
+const app=express();app.use('/api/appearance',appearanceRouter);
+const now=new Date().toISOString(),end=new Date(Date.now()+3600000).toISOString();
+const account={id:'sample',name:'Sample ID',email:'sample@example.invalid',password:'sample-only',sold:false,soldUntil:null,last_reset_at:null,created_at:now,autoResetAt:null,autoResetStatus:null};
+app.get('/api/checkout/config',(_q,r)=>r.json({brand:'FlingRoulette',support:'',supportUrl:'',mockPayment:false,gatewayEnabled:true,available:true,paymentProvider:'imb',plans:[{hours:1,amount:100}]}));
+app.get('/api/accounts',(_q,r)=>r.json({accounts:[account]}));app.get('/api/history',(_q,r)=>r.json({history:[]}));
+app.get('/api/test-orders',(_q,r)=>r.json({orders:[{id:'DEMO',username:'Sample customer',amount:100,hours:1,status:'approved',account_id:'sample',account_name:'Sample ID',account_email:'sample@example.invalid',created_at:now,expires_at:end}],blocks:[],summary:{available:1,revenue:100,sales:1,bookings:1,customers:1,pending:{n:0}},finance:{days:[],cutoff:'2026-09-26'},available:[account],active:[]}));
+app.get('/api/miniapp/me',(_q,r)=>r.json({slots:[],reservations:[],user:{id:'sample',name:'Sample customer'},available:true,blocked:false,prices:{1:100,2:150},supportUsername:null,active:null,recent:[]}));
+app.get('/api/payment-settings',(_q,r)=>r.json({brand:'FlingRoulette',payeeName:'',upiId:'',qrDataUrl:'',support:'',gatewayEnabled:true,mockPayment:false,paymentProvider:'imb',imbConfigured:true,cashfreeConfigured:false,cashfreeEnvironment:'sandbox'}));
+app.get('/api/bot-settings',(_q,r)=>r.json({miniAppUrl:'',supportUsername:'',proofs:[]}));app.get('/api/*',(_q,r)=>r.json({refunds:[],requests:[]}));
+app.use(express.static(root+'/client/dist'));app.get('*',(_q,r)=>r.sendFile(root+'/client/dist/index.html'));
+const server=await new Promise(resolve=>{const s=app.listen(0,'127.0.0.1',()=>resolve(s));});
+const origin=`http://127.0.0.1:${server.address().port}`;
+const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||(fs.existsSync('/usr/bin/chromium')?'/usr/bin/chromium':undefined),args:['--no-sandbox','--disable-dev-shm-usage'],headless:true});
+try{
+const context=await browser.newContext({viewport:{width:390,height:844},deviceScaleFactor:2,isMobile:true,hasTouch:true});
+const token=jwt.sign({role:'admin'},process.env.JWT_SECRET);
+await context.addInitScript(token=>{localStorage.setItem('am_token',token);window.Telegram={WebApp:{initData:'test',ready(){},expand(){},close(){}}}},token);
+const page=await context.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));
+const trigger=name=>page.getByRole('button',{name,exact:false}).filter({has:page.locator('strong')});
+await page.goto(origin+'/?tab=settings');await page.locator('.v7-accordion-trigger').first().waitFor();assert.equal(await page.locator('.v7-accordion-trigger').count(),6);assert.equal(await page.locator('.v7-accordion-trigger[aria-expanded=true]').count(),0);
+await page.screenshot({path:path.join(screenshotDir,'v7-settings.png')});
+await trigger('Wallpaper').click();await page.getByLabel('Choose wallpaper').setInputFiles(root+'/client/public/backgrounds/pearl-aqua.jpg');await page.getByRole('button',{name:'Apply wallpaper',exact:true}).click();await page.getByRole('status').filter({hasText:'Saved for admin'}).waitFor();await page.waitForFunction(()=>document.documentElement.dataset.customWallpaper==='true');
+const mini=await context.newPage();mini.on('pageerror',e=>errors.push(e.message));await mini.goto(origin+'/miniapp');await mini.getByRole('heading',{name:'Hello, Sample'}).waitFor();await mini.waitForFunction(()=>getComputedStyle(document.querySelector('.mini-shell'),'::before').backgroundImage.includes('/api/appearance/wallpaper'));
+await trigger('Accent theme').click();await page.getByRole('button',{name:'Red accent',exact:true}).click();await page.getByRole('button',{name:'Save accent color',exact:true}).click();await page.waitForFunction(()=>document.documentElement.style.getPropertyValue('--app-accent')==='#b42343');await mini.waitForFunction(()=>document.documentElement.style.getPropertyValue('--app-accent')==='#b42343');assert.equal(await page.locator('.v7-accordion-trigger[aria-expanded=true]').count(),1);
+const collapsed=page.locator('.v7-accordion-body').first();assert.equal(await collapsed.getAttribute('aria-hidden'),'true');assert.equal(await collapsed.getAttribute('inert'),'');
+await page.getByRole('button',{name:'Restore Pearl accent',exact:true}).click();await page.waitForFunction(()=>document.documentElement.dataset.customAccent==='false');
+await trigger('Wallpaper').click();await page.getByRole('button',{name:'Restore Pearl wallpaper',exact:true}).click();await page.waitForFunction(()=>!document.documentElement.dataset.customWallpaper);
+await trigger('Admin account').click();await page.getByPlaceholder('Enter current password').fill('draft-not-saved');await trigger('Notifications').click();await trigger('Admin account').click();assert.equal(await page.getByPlaceholder('Enter current password').inputValue(),'draft-not-saved');
+await page.goto(origin+'/?tab=history');await page.locator('.v7-accordion-trigger').first().waitFor();assert.equal(await page.locator('.v7-accordion-trigger').count(),4);assert.equal(await page.getByRole('navigation',{name:'Booking tools'}).getByRole('button').count(),2);
+await page.screenshot({path:path.join(screenshotDir,'v7-history.png')});
+await trigger('Booking controls').click();await page.getByRole('heading',{name:'Booking controls',exact:true}).waitFor();await page.getByRole('button',{name:'+1 hour · ₹50',exact:true}).waitFor();await trigger('Refund tracking').click();await page.getByText('No refunds to track.').waitFor();assert.equal(await page.locator('.v7-accordion-trigger[aria-expanded=true]').count(),1);
+await page.getByRole('navigation',{name:'Booking tools'}).getByRole('button',{name:'Manual booking',exact:true}).click();assert.equal(await page.locator('.v7-accordion-trigger').count(),0);
+await page.setViewportSize({width:320,height:740});await page.goto(origin+'/?tab=settings');await page.locator('.v7-accordion-trigger').first().waitFor();assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth),320);
+await page.emulateMedia({reducedMotion:'reduce'});assert.equal(await page.locator('.v7-accordion-body').first().evaluate(e=>getComputedStyle(e).transitionDuration),'0s');
+assert.deepEqual(errors,[]);console.log('PASS: upload, saved accent, mini app sync, independent restore, accordion state/focus, unchanged top tabs, 320px layout, reduced motion; no browser errors.');
+}finally{await browser.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));db.close();fs.rmSync(dir,{recursive:true,force:true});}
+})().catch(e=>{console.error(e);process.exit(1)});
