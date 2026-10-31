@@ -80,3 +80,10 @@ Validation: build `server` and `client` with `npm run build`, then run `node --t
 When a password reset fails, the affected ID stays unavailable and a customer hold appears in Bookings → History. The admin recovers the external password and completes a successful reset, or retires the ID, then selects **Approve customer to book again**. Reset success alone does not remove the hold. Telegram bookings use the customer’s chat ID; checkout bookings use a persistent browser cookie. Anonymous checkout customers can clear browser data or use another device, so a truly person-wide block requires verified customer identity.
 
 Set **More → Bot settings → Your Telegram username** to make the Contact admin button in Telegram open your profile. Checkout uses its configured support URL, or this same Telegram username when no checkout support URL is set. Blocked customers see that link on the mini app as well.
+
+
+## v6.3 Halloween Edition
+
+Admin login, dashboard panels and the customer mini app at `/checkout` share a Halloween theme with orange and violet accents, dark cards and the approved pumpkin/moon backdrop. Phones use a portrait WebP background; wider screens use a landscape background. Artwork is decorative, with high contrast controls, visible keyboard focus, reduced-motion support and mobile touch targets. Payment/status semantics and booking behavior are unchanged.
+
+The app label is **v6.3 Halloween Edition**, build **2026.10.31.1**. Package versions are 6.3.0 and PWA launch colors match the theme. To update an existing installation, pull the release, rebuild the client and server (`npm run build` in each), then restart the existing service as described above. Existing PWA installations may need to reopen the app to refresh its manifest.

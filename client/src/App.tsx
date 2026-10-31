@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import HalloweenEdition from './HalloweenEdition';
 import OrdersPanel from './OrdersPanel';
 import BotSettingsPanel from './BotSettingsPanel';
 import PaymentSettingsPanel from './PaymentSettingsPanel';
@@ -124,7 +125,8 @@ function Login({ onLogin }: { onLogin: (token: string) => void }) {
           <BrandMark />
           <h1 className="font-heading text-xl font-bold text-slate-900">FlingRoulette</h1>
         </div>
-        <p className="font-body text-sm text-slate-500 mt-1 mb-5">Enter admin password to continue</p>
+        <HalloweenEdition />
+        <p className="font-body text-sm text-slate-500 mt-3 mb-5">Enter admin password to continue</p>
         <input
           type="password"
           value={password}
@@ -555,7 +557,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
         <div className="max-w-3xl mx-auto px-4 sm:px-5 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <BrandMark />
-            <div><h1 className="font-heading text-lg font-bold text-slate-900">FlingRoulette</h1><p className="text-[10px] font-semibold tracking-[0.16em] uppercase text-slate-400">Admin · V{APP_VERSION}</p></div>
+            <div><h1 className="font-heading text-lg font-bold text-slate-900">FlingRoulette</h1><p className="text-[10px] font-semibold tracking-[0.16em] uppercase text-slate-400">Admin</p><HalloweenEdition /></div>
           </div>
           <div className="flex items-center gap-1">
             <button onClick={enablePush} disabled={pushState==='checking'} className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg transition-colors ${pushState==='on'?'bg-emerald-50 text-emerald-700':'text-slate-600 hover:text-slate-900 hover:bg-slate-100'}`}><span>{pushState==='on'?'●':'🔔'}</span><span>{pushState==='on'?'Alerts on':'Enable alerts'}</span></button>
@@ -1052,7 +1054,7 @@ function SettingsPanel({ token, onLogout, onBack }: { token: string; onLogout: (
           </div>
           <div className="flex items-center justify-between gap-4 py-3">
             <dt className="text-slate-500">Release</dt>
-            <dd className="font-medium text-slate-800">Version {APP_VERSION}</dd>
+            <dd className="font-medium text-slate-800">Version {APP_VERSION} · Halloween Edition</dd>
           </div>
         </dl>
         <p className="border-t border-slate-100 bg-slate-50 px-5 py-3 text-center text-xs text-slate-500">© {new Date().getFullYear()} {COPYRIGHT_OWNER}. All rights reserved.</p>

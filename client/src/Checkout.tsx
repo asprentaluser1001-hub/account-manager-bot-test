@@ -1,4 +1,5 @@
 import {useEffect,useMemo,useState} from 'react';
+import HalloweenEdition from './HalloweenEdition';
 
 type Plan={hours:number;amount:number};
 type Config={brand:string;support:string;supportUrl:string;plans:Plan[];available:boolean;gatewayEnabled:boolean;mockPayment:boolean};
@@ -35,9 +36,9 @@ export default function Checkout(){
  const remainingText=`${Math.floor(remaining/3600000)}h ${String(Math.floor(remaining/60000)%60).padStart(2,'0')}m ${String(Math.floor(remaining/1000)%60).padStart(2,'0')}s`;
  const supportUrl=config.supportUrl;
  return <div className="checkout-shell">
-  <header className="checkout-header"><a href="/checkout" className="checkout-brand"><span>FR</span>{config.brand}</a><div className="checkout-secure">Secure order</div></header>
+  <header className="checkout-header"><a href="/checkout" className="checkout-brand"><span>FR</span><div className="checkout-brand-copy">{config.brand}<HalloweenEdition /></div></a><div className="checkout-secure">Secure order</div></header>
   <main className="checkout-main">
-   <section className="checkout-intro"><p className="checkout-kicker">{config.mockPayment?'V3 TEST PREVIEW':'PRIVATE ACCESS'}</p><h1>Choose your access time</h1><p>{config.mockPayment?'Create a sample booking. No payment is collected in this preview.':'Pick a plan, scan the IMB payment QR, and receive access after payment verification.'}</p></section>
+   <section className="checkout-intro"><p className="checkout-kicker">{config.mockPayment?'TEST PREVIEW':'PRIVATE ACCESS'}</p><h1>Choose your access time</h1><p>{config.mockPayment?'Create a sample booking. No payment is collected in this preview.':'Pick a plan, scan the IMB payment QR, and receive access after payment verification.'}</p></section>
    {error&&<div className="checkout-alert error" role="alert">{error}{error.includes("Booking paused")&&supportUrl&&<a className="checkout-primary block" href={supportUrl}>Contact admin</a>}</div>}
    {!saved&&<>
     <div className={`availability ${config.available?'available':'unavailable'}`}><span></span>{config.available?'Access is available now':'Currently unavailable'}</div>
