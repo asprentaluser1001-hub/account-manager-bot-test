@@ -2,7 +2,7 @@
 :root{--pearl-ink:#163b48;--pearl-muted:#496674;--pearl-accent:#086b78;--pearl-glass:rgba(250,255,255,.18);--pearl-edge:rgba(255,255,255,.82);--pearl-shadow:0 14px 40px rgba(43,90,104,.12),inset 0 1px 0 rgba(255,255,255,.9)}
 body{background:#d9eef0;color:var(--pearl-ink)}
 .v4-shell.v3-shell,.v4-shell.v3-login,.mini-shell,.checkout-shell{position:relative;isolation:isolate;background:#d9eef0;color:var(--pearl-ink)}
-.v4-shell::before,.mini-shell::before,.checkout-shell::before{content:"";position:fixed;inset:0;height:100vh;height:100lvh;z-index:0;pointer-events:none;background:linear-gradient(rgba(239,252,255,.62),rgba(239,252,255,.62)),#d9eef0 url('/backgrounds/halloween-mobile.webp') center center/cover no-repeat}
+.v4-shell::before,.mini-shell::before,.checkout-shell::before{content:"";position:fixed;inset:0;height:100vh;height:100lvh;z-index:0;pointer-events:none;background:#10101d url('/backgrounds/halloween-mobile.webp') center center/100% 100% no-repeat}
 .mini-shell::after{background:linear-gradient(180deg,rgba(239,252,255,.08),rgba(255,250,241,.13));z-index:1}
 .checkout-shell>.checkout-header,.checkout-shell>.checkout-main,.checkout-shell>.checkout-footer{position:relative;z-index:1}
 .v6-shell{--v3-ink:var(--pearl-ink);--v3-green:var(--pearl-accent);--v3-line:var(--pearl-edge)}
@@ -199,7 +199,7 @@ body{background:#d9eef0;color:var(--pearl-ink)}
 }
 
 /* Use the matching wide wallpaper on larger screens. */
-@media(min-width:768px){.v4-shell::before,.mini-shell::before,.checkout-shell::before{background-image:linear-gradient(rgba(239,252,255,.62),rgba(239,252,255,.62)),url('/backgrounds/halloween-desktop.webp')}}
+@media(min-width:768px){.v4-shell::before,.mini-shell::before,.checkout-shell::before{background-image:url('/backgrounds/halloween-desktop.webp')}}
 
 /* Halloween accents: retain the existing glass surfaces and component geometry. */
 :root{--pearl-accent:#9f2337}
@@ -238,3 +238,12 @@ body{background:#d9eef0;color:var(--pearl-ink)}
  .v6-shell .admin-secondary,.v6-shell button.bg-white,.v6-shell button.bg-slate-100,.mini-extend{background:#f8d5de;color:#831d32;border-color:#c77a8d}
  .v6-shell .admin-tabs.pearl-slider::before,.mini-nav.pearl-slider::before{background:#f2bac9;border-color:#c77a8d}
 }
+
+/* Let the Halloween artwork show at the edges instead of adding a second wash. */
+.mini-shell::after{background:none}
+/* Keep content legible while the wallpaper remains vivid outside the glass. */
+:root{--pearl-glass:rgba(250,255,255,.66)}
+.v6-shell .v3-header h1,.mini-top strong,.mini-intro h1,.mini-page>h1,.v6-shell .v3-overview-heading h2{color:#fff1f2}
+.v6-shell .v3-header p,.mini-top small,.mini-intro p,.mini-page>p,.v6-shell .v3-overview-heading p:last-child{color:#f5d9df}
+.v6-shell .admin-tabs button,.mini-nav button{color:#f5d9df}
+.v6-shell .admin-tabs.pearl-slider>button.active,.mini-nav.pearl-slider>button.selected{color:#8c233b}
