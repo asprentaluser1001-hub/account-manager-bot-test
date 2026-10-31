@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import OrdersPanel from './OrdersPanel';
 import BotSettingsPanel from './BotSettingsPanel';
 import PaymentSettingsPanel from './PaymentSettingsPanel';
-import { APP_NAME, APP_VERSION, BUILD_NUMBER, COPYRIGHT_OWNER } from './version';
+import { APP_NAME, APP_VERSION, APP_EDITION, BUILD_NUMBER, COPYRIGHT_OWNER } from './version';
 import Checkout from './Checkout';
 import OverviewPanel from './OverviewPanel';
 import BookingControls from './BookingControls';
@@ -582,7 +582,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
         <div className="max-w-3xl mx-auto px-4 sm:px-5 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <BrandMark />
-            <div><h1 className="font-heading text-lg font-bold text-slate-900">FlingRoulette</h1><p className="text-[10px] font-semibold tracking-[0.16em] uppercase text-slate-400">Admin · V{APP_VERSION}</p></div>
+            <div><h1 className="font-heading text-lg font-bold text-slate-900">FlingRoulette</h1><p className="text-[10px] font-semibold tracking-[0.16em] uppercase text-slate-400">Admin · V{APP_VERSION} {APP_EDITION}</p></div>
           </div>
           <div className="flex items-center gap-1">
             <button onClick={onLogout} className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"><Icon path={ICONS.logout} className="w-4 h-4" /><span className="hidden sm:inline">Log out</span></button>
@@ -1083,7 +1083,7 @@ function SettingsPanel({ token, onLogout, onBack }: { token: string; onLogout: (
           </div>
           <div className="flex items-center justify-between gap-4 py-3">
             <dt className="text-slate-500">Release</dt>
-            <dd className="font-medium text-slate-800">Version {APP_VERSION}</dd>
+            <dd className="font-medium text-slate-800">Version {APP_VERSION} · {APP_EDITION}</dd>
           </div>
         </dl>
         <p className="border-t border-slate-100 bg-slate-50 px-5 py-3 text-center text-xs text-slate-500">© {new Date().getFullYear()} {COPYRIGHT_OWNER}. All rights reserved.</p>
