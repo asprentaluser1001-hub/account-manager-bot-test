@@ -22,7 +22,7 @@ export function assertBookingWindow(accountId:string,start:string,end:string,ign
  const conflict=db.prepare("SELECT 1 FROM booking_slots WHERE account_id=? AND order_id<>? AND status IN ('hold','reserved') AND starts_at<? AND ends_at>? LIMIT 1").get(accountId,ignoreOrder,end,start);
  if(conflict)throw new Error('This time overlaps an advance booking or pending extension');
 }
-export function availability(hours=1){
+export function availability(hours=1, bonusMinutes=0){
  if(!PRICES[hours])throw new Error('Choose a valid booking duration');
  expireHolds();
  const now=Date.now();
@@ -39,7 +39,7 @@ export function availability(hours=1){
   }
   if(uncertain)return {id:a.id,name:a.name,used:true,availableAt:null,resetPending:true};
   const slots=db.prepare("SELECT * FROM booking_slots WHERE account_id=? AND status IN ('hold','reserved') ORDER BY starts_at").all(a.id) as Slot[];
-  const length=hours*3600000;
+  const length=(hours*60+bonusMinutes)*60_000;
   for(const s of slots){if(Date.parse(s.ends_at)<=next)continue;if(next+length+RESET_BUFFER_MS<=Date.parse(s.starts_at))break;next=Date.parse(s.ends_at)+RESET_BUFFER_MS;}
   return {id:a.id,name:a.name,used:next>now,availableAt:new Date(next).toISOString(),resetPending:false};
  });

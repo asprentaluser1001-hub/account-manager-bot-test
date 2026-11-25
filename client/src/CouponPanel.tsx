@@ -1,7 +1,7 @@
 import {useEffect, useState} from 'react';
 
 type Plan = {hours: number; amount: number};
-type Coupon = {id: string; code: string; hours: number; value: number; redeemed_at: string | null; order_id: string | null; cancelled_at: string | null};
+type Coupon = {id: string; code: string; hours: number; value: number; redeemed_at: string | null; order_id: string | null; bonus_minutes: number; cancelled_at: string | null};
 
 const endpoint = '/api/payment-settings/coupons';
 const duration = (hours: number) => hours === 0.5 ? '30 minutes' : hours === 168 ? '1 week' : hours === 720 ? '1 month' : `${hours} ${hours === 1 ? 'hour' : 'hours'}`;
@@ -39,7 +39,7 @@ export default function CouponPanel({token}: {token: string}) {
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {Authorization: `Bearer ${token}`, 'Content-Type': 'application/json'},
-        body: JSON.stringify({hours}),
+        body: JSON.stringify(hours===0 ? {type:'bonus'} : {hours}),
       });
       const coupon = await response.json();
       if (!response.ok) throw new Error(coupon.error || 'Could not generate a coupon');
@@ -86,9 +86,10 @@ export default function CouponPanel({token}: {token: string}) {
     <p className="mt-1 text-sm text-slate-500">Generate a single-use code and share it privately with your customer.</p>
     <form onSubmit={generate} className="mt-4 flex flex-wrap items-end gap-3">
       <label className="text-sm text-slate-700">
-        Free slot
+        Coupon type
         <select className="mt-1 block rounded-lg border border-slate-300 px-3 py-2" value={hours ?? ''} onChange={event => setHours(Number(event.target.value))}>
-          {plans.map(plan => <option key={plan.hours} value={plan.hours}>{duration(plan.hours)} · ₹{plan.amount} value</option>)}
+          <option value={0}>30 minutes extra with a paid booking</option>
+          {plans.map(plan => <option key={plan.hours} value={plan.hours}>Free slot · {duration(plan.hours)} · ₹{plan.amount} value</option>)}
         </select>
       </label>
       <button disabled={busy || hours === undefined} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
@@ -101,10 +102,10 @@ export default function CouponPanel({token}: {token: string}) {
         <div className="min-w-0">
           <code className="break-all text-sm text-slate-900">{coupon.code}</code>
           <p className="text-sm text-slate-600">
-            {duration(coupon.hours)} · ₹{coupon.value} value · {coupon.order_id ? `Redeemed · ${coupon.order_id}` : coupon.cancelled_at ? 'Cancelled' : 'Unused'}
+            {coupon.bonus_minutes ? '+30 minutes with payment' : `${duration(coupon.hours)} · ₹${coupon.value} value`} · {coupon.redeemed_at ? `Redeemed · ${coupon.order_id}` : coupon.order_id ? `Linked to order · ${coupon.order_id}` : coupon.cancelled_at ? 'Cancelled' : 'Unused'}
           </p>
         </div>
-        {!coupon.redeemed_at && !coupon.cancelled_at && <div className="flex flex-wrap gap-2"><button type="button" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" onClick={() => void copy(coupon.code)}>
+        {!coupon.order_id && !coupon.cancelled_at && <div className="flex flex-wrap gap-2"><button type="button" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" onClick={() => void copy(coupon.code)}>
           {copied === coupon.code ? 'Copied' : 'Copy code'}
         </button>
         <button type="button" className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-red-700" disabled={cancelling !== null} onClick={() => void cancel(coupon)}>

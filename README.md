@@ -70,6 +70,10 @@ After deploying the updated client and server, restart the existing service. The
 
 Validation: build `server` and `client` with `npm run build`, then run `node --test tests/*.mjs` from `server`. The recovery suite uses only temporary databases, sample credentials and a mocked external browser; it never changes live customer passwords.
 
+## v7.2 paid booking bonus
+
+In **More → Checkout coupons**, choose **30 minutes extra with a paid booking**. At checkout, paste the code and select a paid plan. A ₹100 one-hour plan still costs ₹100 and includes 90 minutes after payment is confirmed. The single-use code is linked to the payment order. Resume an unfinished payment from that order page.
+
 ## v7.1 checkout coupons
 
 Open **More → Checkout coupons** in the admin dashboard, select a slot, and generate a code to share privately. The code covers the full plan price (for example, ₹100 for 1 hour or ₹150 for 2 hours). In checkout, paste the code into **Coupon code** and enter your name. Use **Cancel code** in the admin panel to invalidate an unused coupon. Successful redemption starts the booking immediately, shows access on the private order page, and records a ₹0 booking in history. A code is used once, and stays unused if no slot is available.

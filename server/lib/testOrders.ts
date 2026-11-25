@@ -3,7 +3,7 @@ import { randomBytes, randomUUID } from 'crypto';
 import { db } from '../db';
 import {assertBookingWindow,releaseHold,availability} from './v5Bookings';
 
-export type TestOrder = { account_name?:string|null; account_email?:string|null; customer_key?:string|null; payment_provider?:string; cashfree_session_id?:string|null; cashfree_environment?:'sandbox'|'production'|null; id:string; chat_id:string; username:string; hours:number; amount:number; status:string; account_id:string|null; created_at:string; claimed_at:string|null; approved_at:string|null; expires_at:string|null; delivered_at:string|null; error:string|null; source:string; access_token:string|null; customer_contact:string|null; payment_reference:string|null; proof_data_url:string|null; has_proof?:number; coupon_booking?:number; history_hidden:number };
+export type TestOrder = { account_name?:string|null; account_email?:string|null; customer_key?:string|null; payment_provider?:string; cashfree_session_id?:string|null; cashfree_environment?:'sandbox'|'production'|null; id:string; chat_id:string; username:string; hours:number; amount:number; status:string; account_id:string|null; created_at:string; claimed_at:string|null; approved_at:string|null; expires_at:string|null; delivered_at:string|null; error:string|null; source:string; access_token:string|null; customer_contact:string|null; payment_reference:string|null; proof_data_url:string|null; has_proof?:number; coupon_booking?:number; duration_minutes?:number|null; history_hidden:number };
 export const PRICES: Record<number,number> = {0.5:70,1:100,2:150,3:200,168:750,720:1800};
 
 db.exec(`CREATE TABLE IF NOT EXISTS test_orders (
@@ -127,13 +127,13 @@ export function createOrder(chatId:string,username:string,hours:number):TestOrde
  db.prepare("INSERT INTO test_orders (id,chat_id,username,hours,amount,status,created_at,source,access_token) VALUES (?,?,?,?,?,?,?,'telegram',?)").run(id,chatId,username,hours,PRICES[hours],'awaiting_payment_claim',now,accessToken);
  return getOrder(id)!;
 }
-export function createWebOrder(name:string,contact:string,hours:number,customerKey=randomBytes(24).toString('base64url'),chatId='web',couponId:string|null=null):{order:TestOrder;accessToken:string}{
+export function createWebOrder(name:string,contact:string,hours:number,customerKey=randomBytes(24).toString('base64url'),chatId='web',couponId:string|null=null,bonusMinutes=0):{order:TestOrder;accessToken:string}{
  name=name.trim();contact=contact.trim();
  if(!PRICES[hours]||name.length<2||name.length>64||contact.length>100||!customerKey)throw new Error('Enter a valid name');
  if(customerIsBlocked('web',customerKey)||(/^\d{1,20}$/.test(chatId)&&customerHasFailedReset(chatId)))throw new Error('Booking paused. Please contact the admin for approval before booking again.');
- if(!availability(hours).some(a=>!a.used&&!a.resetPending))throw new Error('Currently unavailable. Please try again later.');
+ if(!availability(hours,bonusMinutes).some(a=>!a.used&&!a.resetPending))throw new Error('Currently unavailable. Please try again later.');
  const id='WEB-'+randomUUID().slice(0,8).toUpperCase(),accessToken=randomBytes(24).toString('base64url'),now=new Date().toISOString();
- db.prepare("INSERT INTO test_orders (id,chat_id,username,hours,amount,status,created_at,source,access_token,customer_contact,customer_key,coupon_id,claimed_at) VALUES (?,?,?,?,?,?,?,'web',?,?,?,?,?)").run(id,chatId,name,hours,couponId?0:PRICES[hours],couponId?'payment_claimed':'awaiting_payment_claim',now,accessToken,contact,customerKey,couponId,couponId?now:null);
+ db.prepare("INSERT INTO test_orders (id,chat_id,username,hours,amount,status,created_at,source,access_token,customer_contact,customer_key,coupon_id,claimed_at,duration_minutes) VALUES (?,?,?,?,?,?,?,'web',?,?,?,?,?,?)").run(id,chatId,name,hours,couponId&&!bonusMinutes?0:PRICES[hours],couponId&&!bonusMinutes?'payment_claimed':'awaiting_payment_claim',now,accessToken,contact,customerKey,couponId,couponId&&!bonusMinutes?now:null,bonusMinutes?hours*60+bonusMinutes:null);
  return {order:getOrder(id)!,accessToken};
 }
 export function createManualBooking(name:string,contact:string,hours:number,amount:number,accountId:string,chatId:string):TestOrder {
@@ -194,7 +194,7 @@ export function submitWebProof(id:string,accessToken:string,paymentReference:str
  return getOrder(id)!;
 }
 export function publicWebOrder(id:string,accessToken:string){
- const order=db.prepare("SELECT id,username,hours,amount,status,created_at,claimed_at,approved_at,expires_at,error,order_type,parent_order_id,(SELECT starts_at FROM booking_slots WHERE order_id=test_orders.id) AS starts_at,(SELECT hold_until FROM booking_slots WHERE order_id=test_orders.id) AS payment_deadline,payment_provider,cashfree_session_id AS payment_session_id,cashfree_environment,gateway_payment_url AS payment_url,gateway_phonepe_link AS phonepe_link,gateway_paytm_link AS paytm_link,gateway_bhim_link AS bhim_link FROM test_orders WHERE id=? AND access_token=? AND source IN ('web','telegram')").get(id,accessToken) as (Partial<TestOrder>&{payment_url?:string;phonepe_link?:string;paytm_link?:string;bhim_link?:string})|undefined;
+ const order=db.prepare("SELECT id,username,hours,duration_minutes,amount,status,created_at,claimed_at,approved_at,expires_at,error,order_type,parent_order_id,(SELECT starts_at FROM booking_slots WHERE order_id=test_orders.id) AS starts_at,(SELECT hold_until FROM booking_slots WHERE order_id=test_orders.id) AS payment_deadline,payment_provider,cashfree_session_id AS payment_session_id,cashfree_environment,gateway_payment_url AS payment_url,gateway_phonepe_link AS phonepe_link,gateway_paytm_link AS paytm_link,gateway_bhim_link AS bhim_link FROM test_orders WHERE id=? AND access_token=? AND source IN ('web','telegram')").get(id,accessToken) as (Partial<TestOrder>&{payment_session_id?:string|null;payment_url?:string;phonepe_link?:string;paytm_link?:string;bhim_link?:string})|undefined;
  if(!order)throw new Error('Order not found');
  let credentials:null|{email:string;password:string}=null;
  if(['approved','delivered','delivery_failed'].includes(String(order.status))&&order.expires_at&&new Date(order.expires_at).getTime()>Date.now()){
@@ -230,12 +230,15 @@ export function assignOrder(id:string,accountId:string):{order:TestOrder;email:s
   if(!availableAccounts().some(a=>a.id===accountId))throw new Error('Account is unavailable');
   const account=db.prepare('SELECT email,password FROM accounts WHERE id=?').get(accountId) as {email:string;password:string}|undefined;
   if(!account)throw new Error('Account missing');
-  const now=new Date(), ends=new Date(now.getTime()+order.hours*3600000).toISOString();
+  const now=new Date(), ends=new Date(now.getTime()+(order.duration_minutes ?? order.hours*60)*60_000).toISOString();
   assertBookingWindow(accountId,now.toISOString(),new Date(Date.parse(ends)+120000).toISOString());
   const sold=db.prepare('UPDATE accounts SET sold=1,sold_until=? WHERE id=? AND sold=0').run(ends,accountId);
   if(!sold.changes)throw new Error('Account is already in use');
   db.prepare("INSERT INTO auto_reset_schedule (account_id,run_at,status,created_at) VALUES (?,?,'pending',?) ON CONFLICT(account_id) DO UPDATE SET run_at=excluded.run_at,status='pending',created_at=excluded.created_at").run(accountId,ends,now.toISOString());
   db.prepare("UPDATE test_orders SET status='approved',account_id=?,approved_at=?,expires_at=? WHERE id=? AND status='payment_claimed'").run(accountId,now.toISOString(),ends,id);
+  if (order.duration_minutes && order.duration_minutes > order.hours*60) {
+   db.prepare('UPDATE checkout_coupons SET redeemed_at = COALESCE(redeemed_at, ?) WHERE order_id = ?').run(now.toISOString(),id);
+  }
   return {order:getOrder(id)!,email:account.email,password:account.password};
 }
 export function markDelivered(id:string){db.prepare("UPDATE test_orders SET status='delivered',delivered_at=? WHERE id=? AND status='approved'").run(new Date().toISOString(),id);}
@@ -254,7 +257,7 @@ export function sandboxReset(accountId:string):{success:boolean;newPassword?:str
 }
 export function summary(now = new Date()){
  const {start,end}=indiaMonthWindow(now);
- const paid=db.prepare("SELECT COUNT(CASE WHEN coupon_id IS NULL THEN 1 END) as sales,COALESCE(SUM(amount),0) as revenue FROM test_orders WHERE history_hidden=0 AND status IN ('payment_late','reserved','reservation_failed','approved','delivered','expired','delivery_failed','reset_failed','cancelled') AND approved_at >= ? AND approved_at < ?").get(start,end) as {sales:number;revenue:number};
+ const paid=db.prepare("SELECT COUNT(CASE WHEN coupon_id IS NULL OR amount > 0 THEN 1 END) as sales,COALESCE(SUM(amount),0) as revenue FROM test_orders WHERE history_hidden=0 AND status IN ('payment_late','reserved','reservation_failed','approved','delivered','expired','delivery_failed','reset_failed','cancelled') AND approved_at >= ? AND approved_at < ?").get(start,end) as {sales:number;revenue:number};
  return {...paid,bookings:(db.prepare("SELECT COUNT(*) as n FROM test_orders WHERE history_hidden=0").get() as {n:number}).n,customers:(db.prepare("SELECT COUNT(DISTINCT chat_id) as n FROM test_orders WHERE history_hidden=0").get() as {n:number}).n,pending:db.prepare("SELECT COUNT(*) as n FROM test_orders WHERE history_hidden=0 AND status='payment_claimed'").get() as {n:number},available:availableAccounts().length};
 }
 export function finance(now = new Date()){

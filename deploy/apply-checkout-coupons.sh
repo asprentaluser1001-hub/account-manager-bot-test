@@ -3,13 +3,13 @@ set -Eeuo pipefail
 umask 077
 
 release=${1:?Pass the verified release commit}
-base=098eca99faa459ff39c9c3537e1cd6859597d48e
+base=$(git -C /root/flingroulette-v4-prod rev-parse HEAD)
 service=account-manager-test.service
 root=/root/flingroulette-v4-prod
 health=http://127.0.0.1:4000
 cd "$root"
 
-[[ $(git rev-parse HEAD) == "$base" ]]
+[[ "$base" == 098eca99faa459ff39c9c3537e1cd6859597d48e || "$base" == af2287b2c5d198805f01c905ff0c965c6baacd72 ]]
 [[ $(git rev-parse "$release^{commit}") == "$release" ]]
 git merge-base --is-ancestor "$base" "$release"
 git diff --quiet
@@ -50,7 +50,7 @@ cp "$backup/database.sqlite" "$stage/migration.sqlite"
   const {db} = require("./dist/db.js");
   if (db.prepare("PRAGMA integrity_check").get().integrity_check !== "ok") process.exit(1);
   db.prepare("SELECT coupon_id FROM test_orders LIMIT 1").get();
-  db.prepare("SELECT cancelled_at FROM checkout_coupons LIMIT 1").get();
+  db.prepare("SELECT bonus_minutes FROM checkout_coupons LIMIT 1").get();
   db.close();
  '
 )

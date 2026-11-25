@@ -4,7 +4,7 @@ import {randomBytes} from 'crypto';
 import {adminAuth} from '../auth';
 import {approveOrder,availableAccounts,customerIsBlocked,claimGatewayPayment,createWebOrder,markDelivered,markGatewayError,PRICES,publicWebOrder,saveGatewayLinks,submitWebProof,getOrder} from '../lib/testOrders';
 import {db} from '../db';
-import {cancelCoupon, generateCoupon, listCoupons, redeemCoupon} from '../lib/coupons';
+import {cancelCoupon, createBonusCheckout, generateCoupon, listCoupons, redeemCoupon, releaseFailedBonusCheckout} from '../lib/coupons';
 import {sendAdminClaim,sendCustomerDelivery,setting as botSetting} from '../lib/telegramBot';
 import {sendApprovalPush} from './push';
 import {notifyBookingRecorded} from '../lib/bookingNotifications';
@@ -67,13 +67,22 @@ checkoutRouter.post('/orders',json({limit:'32kb'}),async(req,res)=>{
   const phone=String(req.body.phone||'').replace(/[ +()-]/g,'').replace(/^91(?=\d{10}$)/,'');
   if(!mockPayment() && provider==='cashfree' && !/^[6-9]\d{9}$/.test(phone))return res.status(400).json({error:'Enter a valid 10-digit Indian mobile number'});
   const customerKey=checkoutCustomer(req);
-  const result=createWebOrder(String(req.body.name||''),provider==='cashfree'?phone:'',Number(req.body.hours),customerKey);
+  const name=String(req.body.name||''), contact=provider==='cashfree'?phone:'', hours=Number(req.body.hours);
+  const bonusCode=String(req.body.bonusCode||'').trim();
+  const result=bonusCode ? createBonusCheckout(bonusCode,name,contact,hours,customerKey,String(req.body.retryToken||'')) : {...createWebOrder(name,contact,hours,customerKey),created:true};
+  if (!result.created) {
+   const previous=publicWebOrder(result.order.id,result.accessToken);
+   if (!mockPayment() && !previous.payment_url && !previous.payment_session_id) return res.status(409).json({error:'Payment is still being prepared. Please try again shortly.'});
+   res.cookie('fr_customer',result.order.customer_key||customerKey,{...customerCookie,secure:!mockPayment()});
+   return res.json({...previous,credentials:undefined,orderId:result.order.id,accessToken:result.accessToken});
+  }
   db.prepare('UPDATE test_orders SET payment_provider=? WHERE id=?').run(provider,result.order.id);
   res.cookie('fr_customer',customerKey,{...customerCookie,secure:!mockPayment()});
   if(!mockPayment()){
    try{
     const base=process.env.PUBLIC_CHECKOUT_URL||`${req.protocol}://${req.get('host')}/checkout`;
     const redirect=new URL('/checkout',base);redirect.searchParams.set('order',result.order.id);redirect.searchParams.set('token',result.accessToken);redirect.searchParams.set('amount',String(result.order.amount));redirect.searchParams.set('hours',String(result.order.hours));
+    if(bonusCode && req.body.couponOnly===true)redirect.searchParams.set('coupon','1');
     if(provider==='cashfree'){
      if(!process.env.PUBLIC_CHECKOUT_URL || redirect.protocol!=='https:')throw new Error('Configure PUBLIC_CHECKOUT_URL with the public HTTPS checkout URL');
      const session=await createCashfreeOrder({orderId:result.order.id,amount:result.order.amount,name:result.order.username,phone,returnUrl:redirect.toString()});
@@ -83,14 +92,14 @@ checkoutRouter.post('/orders',json({limit:'32kb'}),async(req,res)=>{
     const links=await createImbOrder({orderId:result.order.id,amount:result.order.amount,mobile:result.order.customer_contact||'',redirectUrl:redirect.toString()});
     saveGatewayLinks(result.order.id,links);
     return res.status(201).json({orderId:result.order.id,accessToken:result.accessToken,amount:result.order.amount,status:result.order.status,paymentProvider:provider,...links});
-   }catch(error){markGatewayError(result.order.id,error instanceof Error?error.message:'Payment order creation failed');throw error;}
+   }catch(error){markGatewayError(result.order.id,error instanceof Error?error.message:'Payment order creation failed');if(bonusCode)releaseFailedBonusCheckout(result.order.id);throw error;}
   }
   return res.status(201).json({orderId:result.order.id,accessToken:result.accessToken,amount:result.order.amount,status:result.order.status});
  }
  catch(error){const message=error instanceof Error?error.message:'Could not create order';return res.status(message.startsWith('Booking paused')?403:400).json({error:message});}
 });
 checkoutRouter.post('/orders/:id/proof',json({limit:'5mb'}),async(req,res)=>{
- try{if(mockPayment())return res.status(403).json({error:'Payment proof is disabled in the test preview; no payment is collected.'});if(limited(req))return res.status(429).json({error:'Too many attempts. Please wait and try again.'});const order=submitWebProof(req.params.id,String(req.body.accessToken||''),String(req.body.paymentReference||''),String(req.body.proofDataUrl||''));const [adminAlerted,pushAlerts]=await Promise.all([sendAdminClaim(order),sendApprovalPush(order)]);return res.json({status:order.status,adminAlerted,pushAlerts});}
+ try{if(mockPayment())return res.status(403).json({error:'Payment proof is disabled in the test preview; no payment is collected.'});if(limited(req))return res.status(429).json({error:'Too many attempts. Please wait and try again.'});const pending=getOrder(req.params.id);if(pending?.duration_minutes && pending.duration_minutes>pending.hours*60)return res.status(403).json({error:'Bonus checkout requires payment gateway verification.'});const order=submitWebProof(req.params.id,String(req.body.accessToken||''),String(req.body.paymentReference||''),String(req.body.proofDataUrl||''));const [adminAlerted,pushAlerts]=await Promise.all([sendAdminClaim(order),sendApprovalPush(order)]);return res.json({status:order.status,adminAlerted,pushAlerts});}
  catch(error){return res.status(400).json({error:error instanceof Error?error.message:'Could not submit payment proof'});}
 });
 checkoutRouter.get('/orders/:id',async(req,res)=>{
@@ -215,6 +224,7 @@ paymentSettingsRouter.get('/coupons', (_req,res) => {
  res.set('Cache-Control', 'no-store').json({plans, coupons: listCoupons()});
 });
 paymentSettingsRouter.post('/coupons', json({limit: '4kb'}), (req,res) => {
+ if (req.body?.type === 'bonus') return res.set('Cache-Control', 'no-store').status(201).json(generateCoupon(0.5,true));
  if (typeof req.body?.hours !== 'number' || !Object.prototype.hasOwnProperty.call(PRICES, req.body.hours)) {
   return res.status(400).json({error: 'Choose a valid checkout plan.'});
  }
@@ -224,7 +234,7 @@ paymentSettingsRouter.post('/coupons/:id/cancel', (req,res) => {
  const coupon = cancelCoupon(req.params.id);
  res.set('Cache-Control', 'no-store');
  if (!coupon) return res.status(404).json({error: 'Coupon not found.'});
- if (!coupon.cancelled_at) return res.status(409).json({error: 'A redeemed coupon cannot be cancelled.'});
+ if (!coupon.cancelled_at) return res.status(409).json({error: 'A coupon linked to an order cannot be cancelled.'});
  return res.json(coupon);
 });
 paymentSettingsRouter.get('/',(_req,res)=>res.json(clientConfig()));
