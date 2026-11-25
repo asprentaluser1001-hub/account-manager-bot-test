@@ -1,7 +1,7 @@
 import {useEffect, useState} from 'react';
 
 type Plan = {hours: number; amount: number};
-type Coupon = {id: string; code: string; hours: number; value: number; redeemed_at: string | null; order_id: string | null};
+type Coupon = {id: string; code: string; hours: number; value: number; redeemed_at: string | null; order_id: string | null; cancelled_at: string | null};
 
 const endpoint = '/api/payment-settings/coupons';
 const duration = (hours: number) => hours === 0.5 ? '30 minutes' : hours === 168 ? '1 week' : hours === 720 ? '1 month' : `${hours} ${hours === 1 ? 'hour' : 'hours'}`;
@@ -12,6 +12,7 @@ export default function CouponPanel({token}: {token: string}) {
   const [hours, setHours] = useState<number>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [cancelling, setCancelling] = useState<string | null>(null);
   const [copied, setCopied] = useState('');
 
   useEffect(() => {
@@ -50,6 +51,27 @@ export default function CouponPanel({token}: {token: string}) {
     }
   }
 
+  async function cancel(coupon: Coupon) {
+    if (!window.confirm('Cancel this coupon? It will no longer work at checkout.')) return;
+    setCancelling(coupon.id);
+    setError('');
+    try {
+      const headers = {Authorization: `Bearer ${token}`};
+      const response = await fetch(`${endpoint}/${coupon.id}/cancel`, {method: 'POST', headers});
+      const updated = await response.json();
+      if (response.status === 409) {
+        const refreshed = await fetch(endpoint, {headers});
+        if (refreshed.ok) setCoupons((await refreshed.json()).coupons);
+      }
+      if (!response.ok) throw new Error(updated.error || 'Could not cancel the coupon');
+      setCoupons(current => current.map(item => item.id === updated.id ? updated : item));
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Could not cancel the coupon');
+    } finally {
+      setCancelling(null);
+    }
+  }
+
   async function copy(code: string) {
     setError('');
     try {
@@ -79,12 +101,15 @@ export default function CouponPanel({token}: {token: string}) {
         <div className="min-w-0">
           <code className="break-all text-sm text-slate-900">{coupon.code}</code>
           <p className="text-sm text-slate-600">
-            {duration(coupon.hours)} · ₹{coupon.value} value · {coupon.order_id ? `Redeemed · ${coupon.order_id}` : 'Unused'}
+            {duration(coupon.hours)} · ₹{coupon.value} value · {coupon.order_id ? `Redeemed · ${coupon.order_id}` : coupon.cancelled_at ? 'Cancelled' : 'Unused'}
           </p>
         </div>
-        {!coupon.redeemed_at && <button type="button" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" onClick={() => void copy(coupon.code)}>
+        {!coupon.redeemed_at && !coupon.cancelled_at && <div className="flex flex-wrap gap-2"><button type="button" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" onClick={() => void copy(coupon.code)}>
           {copied === coupon.code ? 'Copied' : 'Copy code'}
-        </button>}
+        </button>
+        <button type="button" className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-red-700" disabled={cancelling !== null} onClick={() => void cancel(coupon)}>
+          {cancelling === coupon.id ? 'Cancelling…' : 'Cancel code'}
+        </button></div>}
       </li>)}
     </ul>
   </section>;

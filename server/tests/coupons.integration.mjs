@@ -13,6 +13,10 @@ test('admin codes book exactly one free slot without the payment gateway', async
   delete process.env.IMB_API_TOKEN;
   delete process.env.TELEGRAM_BOT_TOKEN;
   const {db} = require('../dist/db.js');
+  db.exec(`CREATE TABLE checkout_coupons (
+    id TEXT PRIMARY KEY, code TEXT NOT NULL UNIQUE, hours INTEGER NOT NULL, value INTEGER NOT NULL,
+    created_at TEXT NOT NULL, redeemed_at TEXT, order_id TEXT UNIQUE, retry_token TEXT
+  )`);
   const {checkoutRouter, paymentSettingsRouter} = require('../dist/routes/checkout.js');
   const {summary} = require('../dist/lib/testOrders.js');
   const app = require('express')();
@@ -78,9 +82,22 @@ test('admin codes book exactly one free slot without the payment gateway', async
     assert.equal(summary().sales, 0);
     assert.equal(summary().revenue, 0);
 
+    const cancelPath = '/admin/coupons/' + oneHour.id + '/cancel';
+    assert.equal((await post(cancelPath, {})).status, 401);
+    assert.equal((await post('/admin/coupons/' + twoHours.id + '/cancel', {}, admin)).status, 409);
+    const cancellation = await post(cancelPath, {}, admin);
+    assert.equal(cancellation.status, 200);
+    const cancelled = await cancellation.json();
+    assert.ok(cancelled.cancelled_at);
+    assert.equal((await (await post(cancelPath, {}, admin)).json()).cancelled_at, cancelled.cancelled_at);
+    const invalid = await post('/checkout/redeem', {...request, code: oneHour.code, retryToken: newToken()});
+    assert.equal(invalid.status, 400);
+    assert.match((await invalid.json()).error, /cancelled/);
+    assert.equal(summary().bookings, 1);
+
     const history = await (await fetch(base + '/admin/coupons', {headers: admin})).json();
     assert.equal(history.coupons.find(coupon => coupon.id === twoHours.id).order_id, booked.orderId);
-    assert.equal(history.coupons.find(coupon => coupon.id === oneHour.id).order_id, null);
+    assert.equal(history.coupons.find(coupon => coupon.id === oneHour.id).cancelled_at, cancelled.cancelled_at);
   } finally {
     await new Promise(resolve => server.close(resolve));
     db.close();

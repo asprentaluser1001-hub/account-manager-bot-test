@@ -3,7 +3,7 @@ set -Eeuo pipefail
 umask 077
 
 release=${1:?Pass the verified release commit}
-base=ea33f6ce3a88298f72a1426afb334faa4553c57b
+base=68cca4171202b9d32df10e412418c342b95eba51
 service=account-manager-test.service
 root=/root/flingroulette-v4-prod
 health=http://127.0.0.1:4000
@@ -50,7 +50,7 @@ cp "$backup/database.sqlite" "$stage/migration.sqlite"
   const {db} = require("./dist/db.js");
   if (db.prepare("PRAGMA integrity_check").get().integrity_check !== "ok") process.exit(1);
   db.prepare("SELECT coupon_id FROM test_orders LIMIT 1").get();
-  db.prepare("SELECT COUNT(*) FROM checkout_coupons").get();
+  db.prepare("SELECT cancelled_at FROM checkout_coupons LIMIT 1").get();
   db.close();
  '
 )

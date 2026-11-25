@@ -7,6 +7,7 @@ type SavedOrder={orderId:string;accessToken:string;amount:number;hours:number};
 type OrderStatus={id:string;username:string;hours:number;amount:number;status:string;created_at:string;claimed_at:string|null;approved_at:string|null;expires_at:string|null;error:string|null;starts_at?:string;payment_deadline?:string;order_type?:string;payment_provider?:"imb"|"cashfree";payment_session_id?:string;cashfree_environment?:"sandbox"|"production";payment_url?:string;phonepe_link?:string;paytm_link?:string;bhim_link?:string;credentials:null|{email:string;password:string}};
 
 const ORDER_KEY='flingroulette_checkout_order';
+const COUPON_ORDER_KEY='flingroulette_coupon_order';
 const COUPON_RETRY_KEY='flingroulette_coupon_retry';
 
 function couponRetryToken() {
@@ -24,8 +25,11 @@ function linkedOrder():SavedOrder|null{
 
 export default function Checkout(){
  const [config,setConfig]=useState<Config|null>(null),[lockedHours]=useState<number|null>(()=>{const query=new URLSearchParams(window.location.search);const value=Number(query.get('hours'));return query.get('new')==='1'&&[0.5,1,2,3,168,720].includes(value)?value:null}),[selected,setSelected]=useState<number>(()=>{const value=Number(new URLSearchParams(window.location.search).get('hours'));return [0.5,1,2,3,168,720].includes(value)?value:1}),[name,setName]=useState(''),[phone,setPhone]=useState('');
- const [redeeming,setRedeeming]=useState(false),[coupon,setCoupon]=useState('');
- const [saved,setSaved]=useState<SavedOrder|null>(()=>{const linked=linkedOrder();if(linked)return linked;if(new URLSearchParams(window.location.search).get('new')==='1')return null;try{return JSON.parse(sessionStorage.getItem(ORDER_KEY)||'null')}catch{return null}});
+ const [couponOnly]=useState(()=>new URLSearchParams(window.location.search).get('coupon')==='1');
+ const [coupon,setCoupon]=useState('');
+ const redeeming=couponOnly||Boolean(coupon.trim());
+ const orderKey=couponOnly?COUPON_ORDER_KEY:ORDER_KEY;
+ const [saved,setSaved]=useState<SavedOrder|null>(()=>{const linked=linkedOrder();if(linked)return linked;if(new URLSearchParams(window.location.search).get('new')==='1')return null;try{return JSON.parse(sessionStorage.getItem(orderKey)||'null')}catch{return null}});
  const [order,setOrder]=useState<OrderStatus|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[copied,setCopied]=useState(''),[showPaymentLink,setShowPaymentLink]=useState(false),[now,setNow]=useState(Date.now());
  useEffect(()=>{const tick=()=>setNow(Date.now());const timer=setInterval(tick,1000);document.addEventListener('visibilitychange',tick);return()=>{clearInterval(timer);document.removeEventListener('visibilitychange',tick)}},[]);
  useEffect(()=>{fetch('/api/checkout/config').then(async r=>{const d=await r.json();if(!r.ok)throw new Error(d.error);setConfig(d);if(d.plans?.length&&!d.plans.some((p:Plan)=>p.hours===selected))setSelected(d.plans[0].hours)}).catch(()=>setError('Checkout is temporarily unavailable. Please try again.'))},[]);
@@ -50,7 +54,7 @@ export default function Checkout(){
     throw new Error('The payment provider did not return checkout details. Please contact support.');
    }
    const next = {orderId: data.orderId, accessToken: data.accessToken, amount: data.amount, hours: redeeming ? data.hours : selected};
-   sessionStorage.setItem(ORDER_KEY, JSON.stringify(next));
+   sessionStorage.setItem(orderKey, JSON.stringify(next));
    if (redeeming) {
     sessionStorage.removeItem(COUPON_RETRY_KEY);
     setCoupon('');
@@ -88,7 +92,7 @@ export default function Checkout(){
   try{await navigator.clipboard.writeText(order.payment_url);setCopied('payment-link');setTimeout(()=>setCopied(''),1500)}
   catch{setShowPaymentLink(true);setError('Press and hold the payment link below to copy it, then paste it into Safari or Chrome.')}
  }
- function startOver(){sessionStorage.removeItem(ORDER_KEY);setSaved(null);setOrder(null);setError('');setShowPaymentLink(false)}
+ function startOver(){sessionStorage.removeItem(orderKey);setSaved(null);setOrder(null);setError('');setShowPaymentLink(false)}
  async function copy(value:string,key:string){await navigator.clipboard.writeText(value);setCopied(key);setTimeout(()=>setCopied(''),1200)}
  if(!config)return <div className="checkout-shell"><div className="checkout-card text-center"><p className="checkout-muted">{error||'Opening secure checkout…'}</p></div></div>;
  const waiting=order?.status==='payment_claimed';
@@ -107,16 +111,18 @@ export default function Checkout(){
   <main className="checkout-main">
    <section className="checkout-intro"><p className="checkout-kicker">{config.mockPayment?'V3 TEST PREVIEW':'PRIVATE ACCESS'}</p><h1>Choose your access time</h1><p>{config.mockPayment?'Create a sample booking. No payment is collected in this preview.':'Pick a plan, pay securely, and receive access after payment verification.'}</p></section>
    {error&&<div className="checkout-alert error" role="alert">{error}{error.includes("Booking paused")&&supportUrl&&<a className="checkout-primary block" href={supportUrl}>Contact admin</a>}</div>}
+   {saved&&<a className="checkout-link" href={couponOnly?"/checkout":"/checkout?coupon=1"}>{couponOnly?"Open regular checkout":"Redeem a coupon instead"}</a>}
    {!saved&&<>
     <div className={`availability ${config.available?'available':'unavailable'}`}><span></span>{config.available?'Access is available now':'Currently unavailable'}</div>
-    {!redeeming&&<div className="plan-grid">{config.plans.filter(item=>!lockedHours||item.hours===lockedHours).map(item=><button key={item.hours} onClick={()=>{if(!lockedHours)setSelected(item.hours)}} className={`plan-card ${selected===item.hours?'selected':''}`}><span>{duration(item.hours)}</span><strong>₹{item.amount}</strong>{selected===item.hours&&<em>Selected</em>}</button>)}</div>}
+    {!couponOnly&&<div className="plan-grid">{config.plans.filter(item=>!lockedHours||item.hours===lockedHours).map(item=><button key={item.hours} onClick={()=>{if(!lockedHours)setSelected(item.hours)}} className={`plan-card ${selected===item.hours?'selected':''}`}><span>{duration(item.hours)}</span><strong>₹{item.amount}</strong>{selected===item.hours&&<em>Selected</em>}</button>)}</div>}
     <form onSubmit={createOrder} className="checkout-card checkout-form">
      <div><label>Your name</label><input value={name} onChange={e=>setName(e.target.value)} placeholder="Name" required minLength={2} maxLength={64}/></div>
      {!redeeming&&!config.mockPayment&&config.paymentProvider==='cashfree'&&<div><label>Mobile number</label><input type="tel" inputMode="tel" autoComplete="tel" value={phone} onChange={e=>setPhone(e.target.value)} placeholder="10-digit Indian mobile number" required maxLength={16}/></div>}
-     <button type="button" className="checkout-link" disabled={busy} onClick={()=>{setRedeeming(!redeeming);setError('')}}>{redeeming?'Back to paid plans':'I have a coupon code'}</button>
+     <div>
+      <label htmlFor="checkout-coupon">{couponOnly?'Coupon code':'Coupon code (optional)'}</label>
+      <input id="checkout-coupon" value={coupon} onChange={e=>{setCoupon(e.target.value);setError('')}} placeholder="Paste your coupon code" autoCapitalize="characters" autoComplete="off" spellCheck={false} required={couponOnly} maxLength={40} />
+     </div>
      {redeeming ? <>
-      <label htmlFor="checkout-coupon">Coupon code</label>
-      <input id="checkout-coupon" value={coupon} onChange={e=>setCoupon(e.target.value)} autoCapitalize="characters" autoComplete="off" spellCheck={false} required maxLength={40} />
       <div className="order-total"><span>Coupon booking</span><strong>₹0</strong></div>
       <p className="checkout-note">Your code sets the booking duration. Your time starts as soon as you redeem it.</p>
      </> : <div className="order-total"><span>{plan?duration(plan.hours):''}</span><strong>₹{plan?.amount}</strong></div>}

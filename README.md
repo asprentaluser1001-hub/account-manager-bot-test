@@ -72,7 +72,7 @@ Validation: build `server` and `client` with `npm run build`, then run `node --t
 
 ## v7.1 checkout coupons
 
-Open **More → Checkout coupons** in the admin dashboard, select a slot, and generate a code to share privately. The code covers the full plan price (for example, ₹100 for 1 hour or ₹150 for 2 hours). In **Checkout → I have a coupon code**, enter your name and the code. Successful redemption starts the booking immediately, shows access on the private order page, and records a ₹0 booking in history. A code is used once, and stays unused if no slot is available.
+Open **More → Checkout coupons** in the admin dashboard, select a slot, and generate a code to share privately. The code covers the full plan price (for example, ₹100 for 1 hour or ₹150 for 2 hours). In checkout, paste the code into **Coupon code** and enter your name. Use **Cancel code** in the admin panel to invalidate an unused coupon. Successful redemption starts the booking immediately, shows access on the private order page, and records a ₹0 booking in history. A code is used once, and stays unused if no slot is available.
 
 ## v5.9 changes
 

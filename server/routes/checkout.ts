@@ -4,7 +4,7 @@ import {randomBytes} from 'crypto';
 import {adminAuth} from '../auth';
 import {approveOrder,availableAccounts,customerIsBlocked,claimGatewayPayment,createWebOrder,markDelivered,markGatewayError,PRICES,publicWebOrder,saveGatewayLinks,submitWebProof,getOrder} from '../lib/testOrders';
 import {db} from '../db';
-import {generateCoupon, listCoupons, redeemCoupon} from '../lib/coupons';
+import {cancelCoupon, generateCoupon, listCoupons, redeemCoupon} from '../lib/coupons';
 import {sendAdminClaim,sendCustomerDelivery,setting as botSetting} from '../lib/telegramBot';
 import {sendApprovalPush} from './push';
 import {notifyBookingRecorded} from '../lib/bookingNotifications';
@@ -219,6 +219,13 @@ paymentSettingsRouter.post('/coupons', json({limit: '4kb'}), (req,res) => {
   return res.status(400).json({error: 'Choose a valid checkout plan.'});
  }
  return res.set('Cache-Control', 'no-store').status(201).json(generateCoupon(req.body.hours));
+});
+paymentSettingsRouter.post('/coupons/:id/cancel', (req,res) => {
+ const coupon = cancelCoupon(req.params.id);
+ res.set('Cache-Control', 'no-store');
+ if (!coupon) return res.status(404).json({error: 'Coupon not found.'});
+ if (!coupon.cancelled_at) return res.status(409).json({error: 'A redeemed coupon cannot be cancelled.'});
+ return res.json(coupon);
 });
 paymentSettingsRouter.get('/',(_req,res)=>res.json(clientConfig()));
 paymentSettingsRouter.put('/gateway',json({limit:'8kb'}),(req,res)=>{
