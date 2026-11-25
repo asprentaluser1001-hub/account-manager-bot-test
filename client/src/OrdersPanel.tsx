@@ -7,6 +7,7 @@ type Order = {
   chat_id: string;
   hours: number;
   amount: number;
+  coupon_booking?: number;
   status: string;
   account_id: string | null;
   account_name?: string | null;
@@ -752,7 +753,7 @@ export default function OrdersPanel({
                       <p className="mt-1 text-xs text-slate-500">
                         {formatTime(order.created_at)} ·{" "}
                         {order.source === "web"
-                          ? "Checkout page"
+                          ? (order.coupon_booking ? "Checkout coupon" : "Checkout page")
                           : order.source === "manual"
                             ? "Manual"
                             : "Telegram"}

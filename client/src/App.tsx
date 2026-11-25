@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import OrdersPanel from './OrdersPanel';
 import BotSettingsPanel from './BotSettingsPanel';
 import PaymentSettingsPanel from './PaymentSettingsPanel';
+import CouponPanel from './CouponPanel';
 import { APP_NAME, APP_VERSION, BUILD_NUMBER, COPYRIGHT_OWNER } from './version';
 import Checkout from './Checkout';
 import OverviewPanel from './OverviewPanel';
@@ -577,6 +578,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
         {activeTab === 'overview' ? <OverviewPanel token={token} accounts={accounts} onNavigate={setActiveTab} /> : activeTab === 'settings' ? (
           <>
             <PaymentSettingsPanel token={token} />
+            <CouponPanel token={token} />
             <BotSettingsPanel token={token} />
             <SettingsPanel token={token} onLogout={onLogout} onBack={() => setActiveTab('accounts')} />
           </>
