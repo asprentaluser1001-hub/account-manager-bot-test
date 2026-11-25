@@ -70,6 +70,10 @@ After deploying the updated client and server, restart the existing service. The
 
 Validation: build `server` and `client` with `npm run build`, then run `node --test tests/*.mjs` from `server`. The recovery suite uses only temporary databases, sample credentials and a mocked external browser; it never changes live customer passwords.
 
+## v7.1 checkout coupons
+
+Open **More → Checkout coupons** in the admin dashboard, select a slot, and generate a code to share privately. The code covers the full plan price (for example, ₹100 for 1 hour or ₹150 for 2 hours). In **Checkout → I have a coupon code**, enter your name and the code. Successful redemption starts the booking immediately, shows access on the private order page, and records a ₹0 booking in history. A code is used once, and stays unused if no slot is available.
+
 ## v5.9 changes
 
 - Customer mini app: live remaining-time countdown and progress bar while a booking is active; ended bookings show an ended state.

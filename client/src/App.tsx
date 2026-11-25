@@ -6,6 +6,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import OrdersPanel from './OrdersPanel';
 import BotSettingsPanel from './BotSettingsPanel';
 import PaymentSettingsPanel from './PaymentSettingsPanel';
+import CouponPanel from './CouponPanel';
 import { APP_NAME, APP_VERSION, BUILD_NUMBER, COPYRIGHT_OWNER } from './version';
 import Checkout from './Checkout';
 import OverviewPanel from './OverviewPanel';
@@ -613,6 +614,7 @@ function Dashboard({ token, onLogout }: { token: string; onLogout: () => void })
             <Accordion title="Wallpaper" description="Upload a wallpaper or restore Pearl"><AppearanceSettings token={token} mode="wallpaper" /></Accordion>
             <Accordion title="Accent theme" description="Choose colors for buttons and icons"><AppearanceSettings token={token} mode="accent" /></Accordion>
             <Accordion title="Payments" description="Checkout and payment options"><PaymentSettingsPanel token={token} /></Accordion>
+            <Accordion title="Checkout coupons" description="Generate single-use codes for free slots"><CouponPanel token={token} /></Accordion>
             <Accordion title="Bot settings" description="Mini app link, support and proof media"><BotSettingsPanel token={token} /></Accordion>
             <Accordion title="Admin account" description="Password and app version"><SettingsPanel token={token} onLogout={onLogout} onBack={() => setActiveTab('accounts')} /></Accordion>
           </AccordionGroup>

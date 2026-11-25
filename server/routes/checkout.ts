@@ -4,6 +4,7 @@ import {randomBytes} from 'crypto';
 import {adminAuth} from '../auth';
 import {approveOrder,availableAccounts,customerIsBlocked,claimGatewayPayment,createWebOrder,markDelivered,markGatewayError,PRICES,publicWebOrder,saveGatewayLinks,submitWebProof,getOrder} from '../lib/testOrders';
 import {db} from '../db';
+import {generateCoupon, listCoupons, redeemCoupon} from '../lib/coupons';
 import {sendAdminClaim,sendCustomerDelivery,setting as botSetting} from '../lib/telegramBot';
 import {sendApprovalPush} from './push';
 import {notifyBookingRecorded} from '../lib/bookingNotifications';
@@ -33,6 +34,31 @@ function limited(req:Request){
 
 export const checkoutRouter=Router();
 checkoutRouter.get('/config',(_req,res)=>res.json(clientConfig()));
+const checkoutCustomer = (req: Request) =>
+ /(?:^|;\s*)fr_customer=([A-Za-z0-9_-]{32})(?:;|$)/.exec(req.headers.cookie || '')?.[1] ||
+ randomBytes(24).toString('base64url');
+const customerCookie = {httpOnly: true, sameSite: 'lax' as const, path: '/api/checkout', maxAge: 365*24*60*60*1000};
+
+checkoutRouter.post('/redeem', json({limit: '4kb'}), (req,res) => {
+ try {
+  if (limited(req)) return res.status(429).json({error: 'Too many attempts. Please wait and try again.'});
+  const {code, name, retryToken} = req.body || {};
+  if (typeof code !== 'string' || typeof name !== 'string' || typeof retryToken !== 'string') {
+   return res.status(400).json({error: 'Enter your name and coupon code.'});
+  }
+  const customerKey = checkoutCustomer(req);
+  const result = redeemCoupon(code, name, customerKey, retryToken);
+  res.cookie('fr_customer', result.order.customer_key || customerKey, {...customerCookie, secure: !mockPayment()});
+  if (result.created) void notifyBookingRecorded(result.order);
+  return res.set('Cache-Control', 'no-store').status(result.created ? 201 : 200).json({
+   orderId: result.order.id, accessToken: result.accessToken, amount: result.order.amount,
+   hours: result.order.hours, status: result.order.status,
+  });
+ } catch (error) {
+  const message = error instanceof Error ? error.message : 'Could not redeem this coupon';
+  return res.status(message.startsWith('Booking paused') ? 403 : 400).json({error: message});
+ }
+});
 checkoutRouter.post('/orders',json({limit:'32kb'}),async(req,res)=>{
  try{
   if(limited(req))return res.status(429).json({error:'Too many attempts. Please wait and try again.'});
@@ -40,11 +66,10 @@ checkoutRouter.post('/orders',json({limit:'32kb'}),async(req,res)=>{
   if(!mockPayment() && !paymentGatewayConfig().gatewayEnabled)return res.status(503).json({error:'Payment is temporarily unavailable. Please contact support.'});
   const phone=String(req.body.phone||'').replace(/[ +()-]/g,'').replace(/^91(?=\d{10}$)/,'');
   if(!mockPayment() && provider==='cashfree' && !/^[6-9]\d{9}$/.test(phone))return res.status(400).json({error:'Enter a valid 10-digit Indian mobile number'});
-  const cookie=/^(?:.*; )?fr_customer=([A-Za-z0-9_-]{32})(?:;.*)?$/.exec(req.headers.cookie||'');
-  const customerKey=cookie?.[1]||randomBytes(24).toString('base64url');
+  const customerKey=checkoutCustomer(req);
   const result=createWebOrder(String(req.body.name||''),provider==='cashfree'?phone:'',Number(req.body.hours),customerKey);
   db.prepare('UPDATE test_orders SET payment_provider=? WHERE id=?').run(provider,result.order.id);
-  res.cookie('fr_customer',customerKey,{httpOnly:true,sameSite:'lax',secure:!mockPayment(),path:'/api/checkout',maxAge:365*24*60*60*1000});
+  res.cookie('fr_customer',customerKey,{...customerCookie,secure:!mockPayment()});
   if(!mockPayment()){
    try{
     const base=process.env.PUBLIC_CHECKOUT_URL||`${req.protocol}://${req.get('host')}/checkout`;
@@ -186,6 +211,15 @@ checkoutRouter.post('/orders/:id/verify',json({limit:'8kb'}),async(req,res)=>{
 
 export const paymentSettingsRouter=Router();
 paymentSettingsRouter.use(adminAuth);
+paymentSettingsRouter.get('/coupons', (_req,res) => {
+ res.set('Cache-Control', 'no-store').json({plans, coupons: listCoupons()});
+});
+paymentSettingsRouter.post('/coupons', json({limit: '4kb'}), (req,res) => {
+ if (typeof req.body?.hours !== 'number' || !Object.prototype.hasOwnProperty.call(PRICES, req.body.hours)) {
+  return res.status(400).json({error: 'Choose a valid checkout plan.'});
+ }
+ return res.set('Cache-Control', 'no-store').status(201).json(generateCoupon(req.body.hours));
+});
 paymentSettingsRouter.get('/',(_req,res)=>res.json(clientConfig()));
 paymentSettingsRouter.put('/gateway',json({limit:'8kb'}),(req,res)=>{
  try{selectPaymentProvider(req.body?.paymentProvider);return res.json(clientConfig());}
