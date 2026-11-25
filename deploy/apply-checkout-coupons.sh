@@ -3,7 +3,7 @@ set -Eeuo pipefail
 umask 077
 
 release=${1:?Pass the verified release commit}
-base=68cca4171202b9d32df10e412418c342b95eba51
+base=098eca99faa459ff39c9c3537e1cd6859597d48e
 service=account-manager-test.service
 root=/root/flingroulette-v4-prod
 health=http://127.0.0.1:4000
